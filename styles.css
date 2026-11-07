@@ -192,6 +192,11 @@ main { padding-bottom: 2rem; }
 .lienzo[data-modo="conectar"] { cursor: crosshair; }
 .lienzo[data-modo="borrar"] { cursor: pointer; }
 
+/* Lienzo bloqueado (fuera del modo edición): sin cursor de arrastre y sin bloquear el scroll táctil */
+.lienzo[data-bloqueado="true"] { touch-action: auto; }
+.lienzo[data-bloqueado="true"][data-modo] { cursor: default; }
+
+
 /* ============ BOTONERA Y CONTROLES ============ */
 .botonera { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; padding: 1rem 1.25rem; }
 .botonera__grupo { display: flex; flex-wrap: wrap; gap: .5rem; }

@@ -1,0 +1,1852 @@
+"use strict";
+
+/* ==========================================================================
+   MOTOR MATEMÁTICO · Componentes conexas de un grafo dirigido
+   Solo lógica pura: sin DOM, sin eventos.
+   Convención: los índices de filas/columnas (orden, nuevos, bloques) son
+   base 0; los nodos dentro de `componentes` son base 1 (igual que en Python),
+   es decir, etiquetas[nodo - 1] es el nombre del nodo.
+   ========================================================================== */
+
+/* ============ 1. ESTADO GLOBAL ============ */
+let n = 6;
+let matriz = [];
+let etiquetas = [];
+let posiciones = null;
+
+/* ============ UTILIDADES ============ */
+const copiarMatriz = (M) => M.map((fila) => fila.slice());
+
+function validarNodos(nodos) {
+  if (!Number.isInteger(nodos) || nodos < 4 || nodos > 12) {
+    throw new RangeError("El número de nodos debe ser un entero en [4, 12].");
+  }
+}
+
+/** Posiciones iniciales en círculo (primer nodo arriba), como fracciones [0, 1]. */
+function posicionesEnCirculo(nodos) {
+  return Array.from({ length: nodos }, (_, i) => {
+    const angulo = (2 * Math.PI * i) / nodos - Math.PI / 2;
+    return [0.5 + 0.4 * Math.cos(angulo), 0.5 + 0.4 * Math.sin(angulo)];
+  });
+}
+
+/* ============ 2. CONSTRUCCIÓN DEL GRAFO ============ */
+
+/** Matriz de ceros y etiquetas "1", "2", ... Actualiza el estado global. */
+function crearGrafoVacio(nodos) {
+  validarNodos(nodos);
+  n = nodos;
+  matriz = Array.from({ length: n }, () => new Array(n).fill(0));
+  etiquetas = Array.from({ length: n }, (_, i) => String(i + 1));
+  posiciones = posicionesEnCirculo(n);
+  return { matriz, etiquetas };
+}
+
+/** Aristas al azar (0/1) con la diagonal en cero. `densidad` = probabilidad de un 1 (0.5 como en Python). */
+function crearGrafoAleatorio(nodos, densidad = 0.5) {
+  crearGrafoVacio(nodos);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      matriz[i][j] = Math.random() < densidad ? 1 : 0;
+    }
+  }
+  return { matriz, etiquetas };
+}
+
+/* ============ 3. PRODUCTO BOOLEANO ============ */
+
+/** C[i][j] = 1 si existe t con A[i][t] = 1 y B[t][j] = 1 (equivale a (A·B) > 0). */
+function productoBooleano(A, B) {
+  const total = A.length;
+  const C = Array.from({ length: total }, () => new Array(total).fill(0));
+  for (let i = 0; i < total; i++) {
+    for (let j = 0; j < total; j++) {
+      for (let t = 0; t < total; t++) {
+        if (A[i][t] === 1 && B[t][j] === 1) {
+          C[i][j] = 1;
+          break;
+        }
+      }
+    }
+  }
+  return C;
+}
+
+/* ============ 4. PROCEDIMIENTO PASO A PASO ============ */
+
+/** Paso 1: copia de la matriz con 1's en la diagonal principal. */
+function matrizConDiagonal(M) {
+  const M1 = copiarMatriz(M);
+  for (let i = 0; i < M1.length; i++) M1[i][i] = 1;
+  return M1;
+}
+
+/** Paso 2: potencias M^2, M^3, ... guardando los 1's nuevos hasta que se estabiliza. */
+function potenciasConPasos(M) {
+  const total = M.length;
+  const M1 = matrizConDiagonal(M);
+  const iteraciones = [];
+  let anterior = copiarMatriz(M1);
+
+  for (let exponente = 2; exponente <= total + 1; exponente++) {
+    const potencia = productoBooleano(anterior, M1);
+    const nuevos = [];
+
+    for (let i = 0; i < total; i++) {
+      for (let j = 0; j < total; j++) {
+        if (potencia[i][j] === 1 && anterior[i][j] === 0) {
+          // Nodo intermedio: i llega a t y desde t hay una arista hacia j
+          let intermedio = 0;
+          for (let t = 0; t < total; t++) {
+            if (anterior[i][t] === 1 && M1[t][j] === 1) {
+              intermedio = t;
+              break;
+            }
+          }
+          nuevos.push([i, j, intermedio]);
+        }
+      }
+    }
+
+    const estable = nuevos.length === 0;
+    iteraciones.push({ exponente, matriz: potencia, nuevos, estable });
+    if (estable) break;
+    anterior = potencia;
+  }
+  return { M1, iteraciones };
+}
+
+/** Matriz de caminos M_R∞: potencias booleanas de M (con diagonal) hasta que no cambian. */
+function matrizDeCaminos(M) {
+  const total = M.length;
+  const M1 = matrizConDiagonal(M);
+  let potencia = copiarMatriz(M1);
+  for (let k = 0; k < total; k++) {
+    const siguiente = productoBooleano(potencia, M1);
+    const igual = siguiente.every((fila, i) => fila.every((v, j) => v === potencia[i][j]));
+    if (igual) break;
+    potencia = siguiente;
+  }
+  return potencia;
+}
+
+/**
+ * Paso 3: orden de filas por cantidad de 1's (mayor a menor). Desempates:
+ *  1) el primer 1 más cerca de la primera columna (como en Python);
+ *  2) la fila completa, comparada de izquierda a derecha (un 1 antes que un 0);
+ *  3) el índice original.
+ * El desempate 2 solo actúa cuando el 1 no decide y garantiza que las filas
+ * idénticas (nodos de una misma componente) queden contiguas.
+ */
+function ordenarPorFilas(R) {
+  const indices = R.map((_, i) => i);
+  const unos = (i) => R[i].reduce((suma, v) => suma + v, 0);
+  const primerUno = (i) => R[i].indexOf(1);
+
+  return indices.sort((a, b) => {
+    if (unos(a) !== unos(b)) return unos(b) - unos(a);
+    if (primerUno(a) !== primerUno(b)) return primerUno(a) - primerUno(b);
+    for (let k = 0; k < R.length; k++) {
+      if (R[a][k] !== R[b][k]) return R[b][k] - R[a][k];
+    }
+    return a - b;
+  });
+}
+
+/** Componentes: nodos (base 1) que se alcanzan mutuamente, es decir R[i][j] = 1 y R[j][i] = 1. */
+function componentesConexas(M, R = matrizDeCaminos(M)) {
+  const total = M.length;
+  const visitados = new Array(total).fill(false);
+  const componentes = [];
+
+  for (let i = 0; i < total; i++) {
+    if (visitados[i]) continue;
+    const componente = [];
+    for (let j = 0; j < total; j++) {
+      if (R[i][j] === 1 && R[j][i] === 1) {
+        componente.push(j + 1);
+        visitados[j] = true;
+      }
+    }
+    componentes.push(componente);
+  }
+  return componentes;
+}
+
+/** Límites [inicio, fin] (base 0, inclusivos) de cada bloque diagonal según el orden final. */
+function calcularBloques(orden, componentes) {
+  const total = orden.length;
+  const compDeNodo = {};
+  componentes.forEach((comp, idx) => comp.forEach((nodo) => { compDeNodo[nodo] = idx; }));
+
+  const bloques = [];
+  let inicio = 0;
+  let compActual = compDeNodo[orden[0] + 1];
+
+  for (let pos = 1; pos <= total; pos++) {
+    if (pos === total || compDeNodo[orden[pos] + 1] !== compActual) {
+      bloques.push([inicio, pos - 1]);
+      if (pos < total) {
+        compActual = compDeNodo[orden[pos] + 1];
+        inicio = pos;
+      }
+    }
+  }
+  return bloques;
+}
+
+/**
+ * Procedimiento completo (Pasos 1 a 4). Devuelve:
+ *  M1           Paso 1: matriz con diagonal de 1's
+ *  iteraciones  Paso 2: [{ exponente, matriz, nuevos: [[i, j, intermedio]], estable }]
+ *  R            Paso 2: matriz de caminos final
+ *  orden        Paso 3: índices de fila (base 0) ordenados
+ *  R_filas      Paso 3: R con las filas reordenadas
+ *  R_final      Paso 4: R con filas y columnas reordenadas
+ *  componentes  Paso 4: [[nodos base 1], ...]
+ *  bloques      Paso 4: [[inicio, fin], ...] sobre R_final
+ */
+function calcularProcedimiento(M) {
+  const total = M.length;
+  const { M1, iteraciones } = potenciasConPasos(M);
+  const R = matrizDeCaminos(M);
+
+  const orden = ordenarPorFilas(R);
+  const R_filas = orden.map((i) => R[i].slice());
+  const R_final = orden.map((i) => orden.map((j) => R[i][j]));
+
+  const componentes = componentesConexas(M, R);
+  const bloques = calcularBloques(orden, componentes);
+
+  return { M1, iteraciones, R, orden, R_filas, R_final, componentes, bloques };
+}
+
+
+/* ==========================================================================
+   INTERFAZ · navegación, matriz, canvas y eventos
+   (asume que el motor matemático de arriba ya está definido)
+   ========================================================================== */
+
+const $ = (id) => document.getElementById(id);
+
+/* ============ ESTADO DE LA INTERFAZ ============ */
+let procedimiento = null;          // resultado de calcularProcedimiento(matriz)
+let modoConstruccion = "manual";   // "manual" | "aleatorio"
+
+const LADO = 640;                  // coordenadas lógicas del lienzo (px)
+const RADIO_NODO = 22;
+const LARGO_PUNTA = 13;
+const COLOR_AZUL = "#0A2342";
+const COLOR_ROJO = "#E00914";
+const COLOR_NODO = "#CFE8FA";      // celeste suave
+
+/** Ajusta la resolución interna del canvas a pantallas retina sin cambiar su tamaño en CSS. */
+function prepararLienzo(canvas) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = LADO * dpr;
+  canvas.height = LADO * dpr;
+  const c = canvas.getContext("2d");
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return c;
+}
+
+const lienzo = $("lienzo-grafo");
+const ctx = prepararLienzo(lienzo);
+
+/* ============ 1. NAVEGACIÓN SPA Y STEPPER ============ */
+const IDS_PANTALLAS = ["pantalla-inicio", "pantalla-edicion", "pantalla-pasos"];
+
+function mostrarPantalla(paso) {
+  detenerReproduccion();       // si salimos de la pantalla 3, se detiene la reproducción automática
+  IDS_PANTALLAS.forEach((id, k) => $(id).classList.toggle("oculto", k !== paso - 1));
+
+  document.querySelectorAll("#stepper .stepper__item").forEach((item) => {
+    const p = Number(item.dataset.paso);
+    item.classList.toggle("activo", p === paso);
+    item.classList.toggle("hecho", p < paso);
+    if (p === paso) item.setAttribute("aria-current", "step");
+    else item.removeAttribute("aria-current");
+  });
+
+  window.scrollTo({ top: 0 });
+}
+
+function mostrarPantallaInicio() {
+  mostrarPantalla(1);
+}
+
+function mostrarPantallaEdicion() {
+  mostrarPantalla(2);
+  actualizarTextoModo();
+  renderizarMatriz();
+  dibujarGrafo();
+}
+
+function mostrarPantallaPasos() {
+  mostrarPantalla(3);
+  iniciarPasos();
+}
+
+const AYUDA_HERRAMIENTA = {
+  mover: "Arrastra los nodos para acomodarlos.",
+  conectar: "Arrastra desde un nodo hasta otro para crear una arista dirigida.",
+  borrar: "Arrastra desde un nodo hasta otro para quitar la arista que va del primero al segundo.",
+};
+
+function actualizarTextoModo() {
+  const base = modoConstruccion === "aleatorio"
+    ? "Grafo aleatorio generado. Puedes alternar celdas de la matriz."
+    : "Modo manual: haz clic en las celdas de la matriz para crear o quitar aristas (fila → columna).";
+  $("texto-modo").textContent = `${base} ${AYUDA_HERRAMIENTA[lienzo.dataset.modo] || ""}`.trim();
+}
+
+/* ============ 2. MATRIZ DE ADYACENCIA ============ */
+
+/**
+ * Construye el DOM de una matriz con etiquetas de filas y columnas.
+ * opciones: { editable, nuevos, diagonal, bloques } (los tres últimos son Set de "i,j").
+ */
+function crearMatrizDOM(M, etqFilas, etqColumnas, opciones = {}) {
+  const { editable = false, nuevos = new Set(), diagonal = new Set(), bloques = new Set() } = opciones;
+  const columnas = M[0].length;
+
+  const marco = document.createElement("div");
+  marco.className = "matriz-marco";
+  marco.style.setProperty("--cols", columnas + 1);
+
+  const rejilla = document.createElement("div");
+  rejilla.className = "matriz";
+
+  const nuevaCelda = (texto, clase) => {
+    const celda = document.createElement("div");
+    celda.className = clase;
+    celda.textContent = texto;
+    return celda;
+  };
+
+  rejilla.appendChild(nuevaCelda("", "celda celda--esquina"));
+  etqColumnas.forEach((e) => rejilla.appendChild(nuevaCelda(e, "celda celda--etq")));
+
+  M.forEach((fila, i) => {
+    rejilla.appendChild(nuevaCelda(etqFilas[i], "celda celda--etq"));
+    fila.forEach((valor, j) => {
+      const clave = `${i},${j}`;
+      let clase = "celda";
+      if (nuevos.has(clave)) clase += " celda--nuevo";
+      else if (diagonal.has(clave)) clase += " celda--diag";
+      else if (valor === 1) clase += " celda--uno";
+      if (bloques.has(clave)) clase += " celda--bloque";
+
+      if (editable) clase += i === j ? " celda--fija" : " celda--editable";
+      const celda = nuevaCelda(valor, clase);
+      celda.dataset.i = i;
+      celda.dataset.j = j;
+
+      if (editable && i !== j) {
+        celda.tabIndex = 0;
+        celda.setAttribute("role", "button");
+        celda.setAttribute("aria-label", `Arista de ${etqFilas[i]} hacia ${etqColumnas[j]}: ${valor}`);
+      } else if (editable) {
+        celda.title = "La diagonal siempre es 0 en la matriz de adyacencia";
+      }
+      rejilla.appendChild(celda);
+    });
+  });
+
+  marco.appendChild(rejilla);
+  return marco;
+}
+
+/** Lee n, matriz y etiquetas y dibuja la tabla editable dentro de #contenedor-matriz. */
+function renderizarMatriz() {
+  $("contenedor-matriz").replaceChildren(crearMatrizDOM(matriz, etiquetas, etiquetas, { editable: true }));
+  actualizarSelectAnalisis();
+}
+
+/** Alterna 0/1 de una celda (no diagonal) y actualiza tabla y lienzo. */
+function alternarArista(i, j, conTeclado = false) {
+  if (i === j) return;
+  matriz[i][j] = matriz[i][j] === 1 ? 0 : 1;
+  renderizarMatriz();
+  dibujarGrafo();
+  if (conTeclado) {
+    const celda = $("contenedor-matriz").querySelector(`[data-i="${i}"][data-j="${j}"]`);
+    if (celda) celda.focus();
+  }
+}
+
+function alActivarCelda(e) {
+  const celda = e.target.closest(".celda--editable");
+  if (!celda) return;
+  if (e.type === "keydown") {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+  }
+  alternarArista(Number(celda.dataset.i), Number(celda.dataset.j), e.type === "keydown");
+}
+
+/* ============ 3. MOTOR DEL CANVAS ============ */
+
+/**
+ * Geometría de una flecha entre dos centros (px). Si hay arista recíproca se curva
+ * hacia un lado para que ambas se distingan. La punta queda sobre el borde del nodo destino.
+ */
+function geometriaFlecha([x1, y1], [x2, y2], reciproca) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 2 * RADIO_NODO + 4) return null;      // nodos casi superpuestos
+
+  const curva = reciproca ? 26 : 0;
+  const cx = (x1 + x2) / 2 - (dy / dist) * curva;  // punto de control (normal a la recta)
+  const cy = (y1 + y2) / 2 + (dx / dist) * curva;
+
+  // Vectores unitarios desde cada centro hacia el punto de control
+  const vl = Math.hypot(cx - x1, cy - y1);
+  const wl = Math.hypot(cx - x2, cy - y2);
+  const vx = (cx - x1) / vl, vy = (cy - y1) / vl;
+  const wx = (cx - x2) / wl, wy = (cy - y2) / wl;
+
+  const inicio = [x1 + vx * RADIO_NODO, y1 + vy * RADIO_NODO];
+  const punta = [x2 + wx * RADIO_NODO, y2 + wy * RADIO_NODO];   // toca el borde del destino
+  const base = [punta[0] + wx * LARGO_PUNTA * 0.85, punta[1] + wy * LARGO_PUNTA * 0.85];
+  const angulo = Math.atan2(-wy, -wx);                          // sentido de la flecha
+
+  return { inicio, control: [cx, cy], punta, base, angulo };
+}
+
+function dibujarFlecha(c, p1, p2, reciproca) {
+  const g = geometriaFlecha(p1, p2, reciproca);
+  if (!g) return;
+
+  c.strokeStyle = COLOR_AZUL;
+  c.fillStyle = COLOR_AZUL;
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(g.inicio[0], g.inicio[1]);
+  c.quadraticCurveTo(g.control[0], g.control[1], g.base[0], g.base[1]);
+  c.stroke();
+
+  dibujarPunta(c, g.punta, g.angulo);
+}
+
+/** Triángulo relleno (con el color de relleno actual) cuya punta está en `punta` y mira hacia `angulo`. */
+function dibujarPunta(c, punta, angulo) {
+  const abertura = Math.PI / 7;
+  c.beginPath();
+  c.moveTo(punta[0], punta[1]);
+  c.lineTo(punta[0] - LARGO_PUNTA * Math.cos(angulo - abertura), punta[1] - LARGO_PUNTA * Math.sin(angulo - abertura));
+  c.lineTo(punta[0] - LARGO_PUNTA * Math.cos(angulo + abertura), punta[1] - LARGO_PUNTA * Math.sin(angulo + abertura));
+  c.closePath();
+  c.fill();
+}
+
+/** Flecha provisional (discontinua) mientras el usuario arrastra para conectar o borrar. */
+function dibujarFlechaVirtual(c, desde, hasta, color) {
+  const dx = hasta[0] - desde[0];
+  const dy = hasta[1] - desde[1];
+  const largo = Math.hypot(dx, dy);
+  if (largo < RADIO_NODO + LARGO_PUNTA + 2) return;     // aún muy cerca del nodo origen
+  const ux = dx / largo;
+  const uy = dy / largo;
+
+  c.strokeStyle = color;
+  c.fillStyle = color;
+  c.lineWidth = 2.5;
+  c.setLineDash([7, 5]);
+  c.beginPath();
+  c.moveTo(desde[0] + ux * RADIO_NODO, desde[1] + uy * RADIO_NODO);
+  c.lineTo(hasta[0] - ux * LARGO_PUNTA * 0.85, hasta[1] - uy * LARGO_PUNTA * 0.85);
+  c.stroke();
+  c.setLineDash([]);
+  dibujarPunta(c, hasta, Math.atan2(uy, ux));
+}
+
+function dibujarNodo(c, [x, y], texto, resaltado, relleno) {
+  c.beginPath();
+  c.arc(x, y, RADIO_NODO, 0, 2 * Math.PI);
+  c.fillStyle = relleno;
+  c.fill();
+  c.lineWidth = resaltado ? 4 : 2;
+  c.strokeStyle = resaltado ? COLOR_ROJO : COLOR_AZUL;
+  c.stroke();
+
+  c.fillStyle = COLOR_AZUL;
+  c.font = '700 16px Inter, system-ui, "Segoe UI", Arial, sans-serif';
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.fillText(texto, x, y + 1);
+}
+
+/** Dibuja un grafo en cualquier contexto 2D (reutilizable para el lienzo de resultados). */
+function trazarGrafo(c, M, etqs, pos, { resaltado = null, colorNodo = null } = {}) {
+  c.clearRect(0, 0, LADO, LADO);
+  const centros = pos.map(([fx, fy]) => [fx * LADO, fy * LADO]);
+  const marcados = resaltado instanceof Set ? resaltado : new Set(resaltado === null ? [] : [resaltado]);
+
+  for (let i = 0; i < M.length; i++) {
+    for (let j = 0; j < M.length; j++) {
+      if (i !== j && M[i][j] === 1) dibujarFlecha(c, centros[i], centros[j], M[j][i] === 1);
+    }
+  }
+  // Nodos encima de las líneas
+  centros.forEach((centro, i) => {
+    dibujarNodo(c, centro, etqs[i], marcados.has(i), colorNodo ? colorNodo(i) : COLOR_NODO);
+  });
+}
+
+function dibujarGrafo() {
+  if (!posiciones || posiciones.length !== n) posiciones = posicionesEnCirculo(n);
+  const conectando = nodoOrigen !== null;
+  const marcados = new Set();
+  if (nodoArrastrado !== null) marcados.add(nodoArrastrado);
+  else if (conectando) {
+    marcados.add(nodoOrigen);
+    if (nodoHover !== null) marcados.add(nodoHover);
+  } else if (nodoHover !== null) marcados.add(nodoHover);
+  trazarGrafo(ctx, matriz, etiquetas, posiciones, { resaltado: marcados });
+
+  // Flecha virtual: parte del nodo origen y sigue al cursor (o se ajusta al borde del nodo destino)
+  if (conectando && puntoActual) {
+    const desde = [posiciones[nodoOrigen][0] * LADO, posiciones[nodoOrigen][1] * LADO];
+    let hasta = puntoActual;
+    if (nodoHover !== null && nodoHover !== nodoOrigen) {
+      const centro = [posiciones[nodoHover][0] * LADO, posiciones[nodoHover][1] * LADO];
+      const d = Math.hypot(desde[0] - centro[0], desde[1] - centro[1]) || 1;
+      hasta = [centro[0] + ((desde[0] - centro[0]) / d) * RADIO_NODO, centro[1] + ((desde[1] - centro[1]) / d) * RADIO_NODO];
+    }
+    dibujarFlechaVirtual(ctx, desde, hasta, lienzo.dataset.modo === "borrar" ? "#4A5B72" : COLOR_ROJO);
+  }
+}
+
+/* ============ 4. DRAG & DROP DE NODOS ============ */
+let nodoArrastrado = null;
+let nodoOrigen = null;        // nodo desde el que se arrastra una flecha (modos conectar / borrar)
+let puntoActual = null;       // posición del cursor mientras se arrastra la flecha virtual
+let nodoHover = null;
+let desfase = [0, 0];
+let dibujoPendiente = false;
+
+function solicitarDibujo() {
+  if (dibujoPendiente) return;
+  dibujoPendiente = true;
+  requestAnimationFrame(() => {
+    dibujoPendiente = false;
+    dibujarGrafo();
+  });
+}
+
+/** Coordenadas lógicas (0..LADO) de un evento de mouse o touch sobre el lienzo. */
+function puntoDelEvento(e) {
+  const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+  const r = lienzo.getBoundingClientRect();
+  return [((t.clientX - r.left) * LADO) / r.width, ((t.clientY - r.top) * LADO) / r.height];
+}
+
+function nodoEn(x, y) {
+  if (!posiciones) return null;
+  for (let i = posiciones.length - 1; i >= 0; i--) {
+    if (Math.hypot(x - posiciones[i][0] * LADO, y - posiciones[i][1] * LADO) <= RADIO_NODO + 4) return i;
+  }
+  return null;
+}
+
+function alPresionar(e) {
+  if (e.cancelable && e.type === "touchstart") e.preventDefault();
+  const [x, y] = puntoDelEvento(e);
+  const i = nodoEn(x, y);
+  if (i === null) return;
+
+  const modo = lienzo.dataset.modo;
+  if (modo === "conectar" || modo === "borrar") {      // no se mueve el nodo: se arrastra una flecha virtual
+    nodoOrigen = i;
+    puntoActual = [x, y];
+    nodoHover = null;
+    solicitarDibujo();
+    return;
+  }
+
+  nodoArrastrado = i;
+  desfase = [posiciones[i][0] * LADO - x, posiciones[i][1] * LADO - y];
+  lienzo.style.cursor = "grabbing";
+  solicitarDibujo();
+}
+
+function alMover(e) {
+  const [x, y] = puntoDelEvento(e);
+
+  if (nodoOrigen !== null) {
+    if (e.cancelable) e.preventDefault();
+    puntoActual = [x, y];
+    const candidato = nodoEn(x, y);
+    nodoHover = candidato !== nodoOrigen ? candidato : null;
+    solicitarDibujo();
+    return;
+  }
+
+  if (nodoArrastrado !== null) {
+    if (e.cancelable) e.preventDefault();
+    const limite = RADIO_NODO + 6;
+    const nx = Math.min(Math.max(x + desfase[0], limite), LADO - limite);
+    const ny = Math.min(Math.max(y + desfase[1], limite), LADO - limite);
+    posiciones[nodoArrastrado] = [nx / LADO, ny / LADO];
+    solicitarDibujo();
+    return;
+  }
+
+  const hover = nodoEn(x, y);
+  if (hover !== nodoHover) {
+    nodoHover = hover;
+    solicitarDibujo();
+  }
+}
+
+function alSoltar(e) {
+  if (nodoOrigen !== null) {
+    const [x, y] = puntoDelEvento(e);
+    const destino = nodoEn(x, y);
+    if (destino !== null && destino !== nodoOrigen) {
+      matriz[nodoOrigen][destino] = lienzo.dataset.modo === "conectar" ? 1 : 0;
+      renderizarMatriz();
+    }
+    nodoOrigen = null;
+    puntoActual = null;
+    nodoHover = e.type === "mouseup" ? destino : null;
+    solicitarDibujo();
+    return;
+  }
+
+  nodoArrastrado = null;
+  lienzo.style.cursor = "";
+  if (e.type === "mouseup") {
+    const [x, y] = puntoDelEvento(e);
+    nodoHover = nodoEn(x, y);
+  } else {
+    nodoHover = null;
+  }
+  solicitarDibujo();
+}
+
+function alSalir() {
+  nodoArrastrado = null;
+  nodoOrigen = null;
+  puntoActual = null;
+  nodoHover = null;
+  lienzo.style.cursor = "";
+  solicitarDibujo();
+}
+
+/* ============ HERRAMIENTAS DEL LIENZO ============ */
+function cambiarModoHerramienta(modo) {
+  lienzo.dataset.modo = modo;
+  document.querySelectorAll(".btn--herramienta[data-modo]").forEach((boton) => {
+    boton.setAttribute("aria-pressed", String(boton.dataset.modo === modo));
+  });
+  nodoArrastrado = null;
+  nodoOrigen = null;
+  puntoActual = null;
+  lienzo.style.cursor = "";
+  actualizarTextoModo();
+  solicitarDibujo();
+}
+
+/** Deja la matriz en ceros (se conservan los nodos y su posición). */
+function limpiarGrafo() {
+  matriz.forEach((fila) => fila.fill(0));
+  renderizarMatriz();
+  dibujarGrafo();
+  mostrarToast("Se quitaron todas las aristas.");
+}
+
+/** Nueva matriz aleatoria con la misma cantidad de nodos; conserva posiciones y nombres. */
+function regenerarGrafo() {
+  const posicionesPrevias = posiciones;
+  const etiquetasPrevias = etiquetas;
+  crearGrafoAleatorio(n);
+  if (posicionesPrevias && posicionesPrevias.length === n) posiciones = posicionesPrevias;
+  etiquetas = etiquetasPrevias;
+  modoConstruccion = "aleatorio";
+  actualizarTextoModo();
+  renderizarMatriz();
+  dibujarGrafo();
+}
+
+function inicializarHerramientas() {
+  document.querySelectorAll(".btn--herramienta[data-modo]").forEach((boton) => {
+    boton.addEventListener("click", () => cambiarModoHerramienta(boton.dataset.modo));
+  });
+  $("btn-limpiar").addEventListener("click", limpiarGrafo);
+  $("btn-regenerar").addEventListener("click", regenerarGrafo);
+}
+
+/* ============ 5. SELECTOR DE NODOS Y BOTONES BASE ============ */
+function fijarNodosElegidos(valor) {
+  const v = Math.min(12, Math.max(4, Math.round(Number(valor))));
+  $("input-n").value = v;
+  $("rango-n").value = v;
+  return v;
+}
+
+function leerNodosElegidos() {
+  const crudo = parseInt($("input-n").value, 10);
+  return fijarNodosElegidos(Number.isNaN(crudo) ? $("rango-n").value : crudo);
+}
+
+function inicializarApp() {
+  // Selector de cantidad de nodos
+  $("input-n").addEventListener("input", () => {
+    const v = parseInt($("input-n").value, 10);
+    if (v >= 4 && v <= 12) $("rango-n").value = v;
+  });
+  $("input-n").addEventListener("change", leerNodosElegidos);
+  $("rango-n").addEventListener("input", () => fijarNodosElegidos($("rango-n").value));
+  $("btn-menos").addEventListener("click", () => fijarNodosElegidos(leerNodosElegidos() - 1));
+  $("btn-mas").addEventListener("click", () => fijarNodosElegidos(leerNodosElegidos() + 1));
+
+  // Modo de construcción
+  $("btn-aleatorio").addEventListener("click", () => {
+    crearGrafoAleatorio(leerNodosElegidos());
+    modoConstruccion = "aleatorio";
+    mostrarPantallaEdicion();
+  });
+  $("btn-manual").addEventListener("click", () => {
+    crearGrafoVacio(leerNodosElegidos());
+    modoConstruccion = "manual";
+    mostrarPantallaEdicion();
+  });
+
+  // Matriz editable (delegación de eventos)
+  $("contenedor-matriz").addEventListener("click", alActivarCelda);
+  $("contenedor-matriz").addEventListener("keydown", alActivarCelda);
+
+  // Drag & drop en el lienzo (mouse + touch para móviles)
+  lienzo.addEventListener("mousedown", alPresionar);
+  lienzo.addEventListener("mousemove", alMover);
+  lienzo.addEventListener("mouseup", alSoltar);
+  lienzo.addEventListener("mouseleave", alSalir);
+  lienzo.addEventListener("touchstart", alPresionar, { passive: false });
+  lienzo.addEventListener("touchmove", alMover, { passive: false });
+  lienzo.addEventListener("touchend", alSoltar);
+  lienzo.addEventListener("touchcancel", alSalir);
+
+  // Ejecución y navegación
+  $("btn-ejecutar").addEventListener("click", () => {
+    procedimiento = calcularProcedimiento(matriz);
+    mostrarPantallaPasos();
+  });
+  ["btn-volver-inicio", "btn-nuevo"].forEach((id) => $(id).addEventListener("click", mostrarPantallaInicio));
+  inicializarHerramientas();
+}
+
+inicializarApp();
+
+
+/* ==========================================================================
+   FUNCIONALIDADES AVANZADAS · almacenamiento local, PDF y QR
+   (sin backend: todo ocurre en el navegador)
+   ========================================================================== */
+
+/* ============ UTILIDADES ============ */
+const CLAVE_EJERCICIOS = "componentesConexas.ejercicios.v1";
+const URL_QRCODEJS = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir"];
+const PALETA_COMPONENTES = [
+  "#CFE8FA", "#B3E6B3", "#FFD9A0", "#E3D4F5", "#FAD1D8", "#CDEDEA",
+  "#F3EEB0", "#D9DEE6", "#F6C9A8", "#C5D5F7", "#E6F0B8", "#F2C6E6",
+];
+
+/** Crea un elemento: props admite className, texto, estilo y cualquier atributo; hijos se anexan. */
+function crearElemento(etiqueta, props = {}, ...hijos) {
+  const el = document.createElement(etiqueta);
+  Object.entries(props).forEach(([clave, valor]) => {
+    if (clave === "className") el.className = valor;
+    else if (clave === "texto") el.textContent = valor;
+    else if (clave === "estilo") el.style.cssText = valor;
+    else el.setAttribute(clave, valor);
+  });
+  hijos.forEach((h) => el.append(h));
+  return el;
+}
+
+let temporizadorToast = null;
+function mostrarToast(texto) {
+  const toast = $("toast");
+  toast.textContent = texto;
+  toast.classList.remove("oculto");
+  clearTimeout(temporizadorToast);
+  temporizadorToast = setTimeout(() => toast.classList.add("oculto"), 2800);
+}
+
+let focoPrevio = null;
+function abrirModal(id) {
+  focoPrevio = document.activeElement;
+  const modal = $(id);
+  modal.classList.remove("oculto");
+  const foco = modal.querySelector("button, input");
+  if (foco) foco.focus();
+}
+
+function cerrarModal(id) {
+  const modal = $(id);
+  if (!modal) return;
+  modal.classList.add("oculto");
+  if (focoPrevio && focoPrevio.focus) focoPrevio.focus();
+}
+
+const scriptsCargados = {};
+/** Inyecta un <script> externo una sola vez y devuelve una promesa. */
+function cargarScript(url) {
+  if (!scriptsCargados[url]) {
+    scriptsCargados[url] = new Promise((resolver, rechazar) => {
+      const script = document.createElement("script");
+      script.src = url;
+      script.onload = resolver;
+      script.onerror = () => {
+        delete scriptsCargados[url];
+        script.remove();
+        rechazar(new Error("No se pudo cargar " + url));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return scriptsCargados[url];
+}
+
+/* ============ CODEC_INICIO · validación y formato del QR ============ */
+
+/** Valida y normaliza un grafo venga de localStorage o de un QR. Lanza Error con mensaje legible. */
+function normalizarGrafo(datos) {
+  const M = datos && datos.matriz;
+  if (!Array.isArray(M) || M.length < 4 || M.length > 12) {
+    throw new Error("El grafo debe tener entre 4 y 12 nodos.");
+  }
+  const nn = M.length;
+  if (!M.every((fila) => Array.isArray(fila) && fila.length === nn)) {
+    throw new Error("La matriz de adyacencia no es cuadrada.");
+  }
+
+  const matrizOk = M.map((fila, i) => fila.map((v, j) => {
+    if (i === j) return 0;                       // la diagonal siempre es 0
+    if (v !== 0 && v !== 1) throw new Error("La matriz solo puede contener 0 y 1.");
+    return v;
+  }));
+
+  const etiquetasOk = Array.isArray(datos.etiquetas) && datos.etiquetas.length === nn
+    ? datos.etiquetas.map((e) => String(e).trim().slice(0, 4))
+    : Array.from({ length: nn }, (_, i) => String(i + 1));
+
+  const posValidas = Array.isArray(datos.posiciones) && datos.posiciones.length === nn &&
+    datos.posiciones.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => Number.isFinite(v)));
+  const posicionesOk = posValidas
+    ? datos.posiciones.map(([x, y]) => [Math.min(0.95, Math.max(0.05, x)), Math.min(0.95, Math.max(0.05, y))])
+    : posicionesEnCirculo(nn);
+
+  return { n: nn, matriz: matrizOk, etiquetas: etiquetasOk, posiciones: posicionesOk };
+}
+
+const bitsAHex = (bits) => {
+  let hex = "";
+  for (let i = 0; i < bits.length; i += 4) hex += parseInt(bits.slice(i, i + 4).padEnd(4, "0"), 2).toString(16);
+  return hex;
+};
+const hexABits = (hex) => [...hex].map((c) => parseInt(c, 16).toString(2).padStart(4, "0")).join("");
+
+/**
+ * Estado actual -> JSON compacto: [1, n, aristas en hex, posiciones en base 36, etiquetas?]
+ * Las aristas son los n·(n-1) bits fuera de la diagonal; cada coordenada ocupa 2 caracteres base 36.
+ */
+function codificarGrafoParaQR() {
+  let bits = "";
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i !== j) bits += matriz[i][j] ? "1" : "0";
+    }
+  }
+  const pos = (posiciones && posiciones.length === n ? posiciones : posicionesEnCirculo(n))
+    .map((p) => p.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 1295).toString(36).padStart(2, "0")).join(""))
+    .join("");
+
+  const datos = [1, n, bitsAHex(bits), pos];
+  if (etiquetas.some((e, i) => e !== String(i + 1))) datos.push(etiquetas);   // solo si hay nombres propios
+  return JSON.stringify(datos);
+}
+
+/** Texto de un QR -> grafo normalizado. Acepta el formato compacto y el JSON de la versión Python. */
+function decodificarGrafoDeQR(texto) {
+  let datos;
+  try {
+    datos = JSON.parse(String(texto).replace(/^\uFEFF/, "").trim());
+  } catch (e) {
+    throw new Error("El código QR no contiene un formato JSON válido.");
+  }
+
+  if (Array.isArray(datos)) {
+    const [version, nn, hex, pos, etqs] = datos;
+    if (version !== 1 || !Number.isInteger(nn) || nn < 4 || nn > 12 || typeof hex !== "string" || !/^[0-9a-f]*$/i.test(hex)) {
+      throw new Error("El código QR no pertenece a un ejercicio de esta aplicación.");
+    }
+    const bits = hexABits(hex).slice(0, nn * (nn - 1));
+    if (bits.length !== nn * (nn - 1)) throw new Error("El código QR está incompleto o dañado.");
+
+    let k = 0;
+    const M = Array.from({ length: nn }, (_, i) => Array.from({ length: nn }, (_, j) => (i === j ? 0 : Number(bits[k++]))));
+    const pos2 = typeof pos === "string" && pos.length === 4 * nn
+      ? Array.from({ length: nn }, (_, i) => [
+          parseInt(pos.substr(4 * i, 2), 36) / 1295,
+          parseInt(pos.substr(4 * i + 2, 2), 36) / 1295,
+        ])
+      : null;
+    return normalizarGrafo({ matriz: M, etiquetas: etqs, posiciones: pos2 });
+  }
+
+  if (datos && typeof datos === "object" && datos.matriz) return normalizarGrafo(datos);   // formato de la versión Python
+  throw new Error("El código QR no pertenece a un ejercicio de esta aplicación.");
+}
+/* ============ CODEC_FIN ============ */
+
+/** Reemplaza el estado global por un grafo ya normalizado y abre la pantalla de edición. */
+function aplicarGrafo(grafo) {
+  n = grafo.n;
+  matriz = grafo.matriz;
+  etiquetas = grafo.etiquetas;
+  posiciones = grafo.posiciones;
+  procedimiento = null;
+  modoConstruccion = "manual";
+  fijarNodosElegidos(n);
+  mostrarPantallaEdicion();
+}
+
+/* ============ 1. EJERCICIOS GUARDADOS (localStorage) ============ */
+function leerEjercicios() {
+  try {
+    const lista = JSON.parse(localStorage.getItem(CLAVE_EJERCICIOS) || "[]");
+    return Array.isArray(lista) ? lista : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function escribirEjercicios(lista) {
+  try {
+    localStorage.setItem(CLAVE_EJERCICIOS, JSON.stringify(lista));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function guardarEjercicio() {
+  if (!matriz.length) {
+    mostrarToast("Primero crea un grafo.");
+    return;
+  }
+  const sugerido = `Grafo de ${n} nodos`;
+  const entrada = window.prompt("Nombre del ejercicio:", sugerido);
+  if (entrada === null) return;
+  const nombre = entrada.trim().slice(0, 60) || sugerido;
+
+  const lista = leerEjercicios();
+  const previo = lista.findIndex((e) => String(e.nombre).toLowerCase() === nombre.toLowerCase());
+  if (previo >= 0 && !window.confirm(`Ya existe «${nombre}». ¿Quieres reemplazarlo?`)) return;
+
+  const registro = {
+    id: Date.now().toString(36),
+    nombre,
+    fecha: new Date().toISOString(),
+    n,
+    matriz: matriz.map((fila) => fila.slice()),
+    etiquetas: etiquetas.slice(),
+    posiciones: posiciones ? posiciones.map((p) => p.slice()) : null,
+  };
+  if (previo >= 0) lista[previo] = registro;
+  else lista.push(registro);
+
+  mostrarToast(escribirEjercicios(lista)
+    ? `Ejercicio «${nombre}» guardado`
+    : "No se pudo guardar: el navegador bloqueó el almacenamiento local.");
+}
+
+function renderizarListaGuardados() {
+  const ul = $("lista-guardados");
+  const lista = leerEjercicios().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  ul.replaceChildren();
+  $("vacio-guardados").classList.toggle("oculto", lista.length > 0);
+
+  lista.forEach((registro) => {
+    const fecha = new Date(registro.fecha);
+    const meta = `${registro.matriz ? registro.matriz.length : "?"} nodos · ` +
+      (Number.isNaN(fecha.getTime()) ? "sin fecha" : fecha.toLocaleString("es", { dateStyle: "medium", timeStyle: "short" }));
+
+    const botonCargar = crearElemento("button", { type: "button", className: "btn btn--primario btn--chico", texto: "Cargar" });
+    const botonEliminar = crearElemento("button", { type: "button", className: "btn btn--secundario btn--chico", texto: "Eliminar" });
+    botonCargar.addEventListener("click", () => cargarEjercicio(registro.id));
+    botonEliminar.addEventListener("click", () => eliminarEjercicio(registro.id));
+
+    ul.appendChild(crearElemento("li", { estilo: "cursor:default" },
+      crearElemento("div", { estilo: "min-width:0" },
+        crearElemento("strong", { texto: registro.nombre, estilo: "display:block;overflow-wrap:anywhere" }),
+        crearElemento("span", { className: "nota", texto: meta, estilo: "margin:0" })),
+      crearElemento("div", { estilo: "display:flex;gap:.4rem;flex:none" }, botonCargar, botonEliminar)));
+  });
+}
+
+function abrirModalGuardados() {
+  renderizarListaGuardados();
+  abrirModal("modal-guardados");
+}
+
+function cargarEjercicio(id) {
+  const registro = leerEjercicios().find((e) => e.id === id);
+  if (!registro) return;
+  try {
+    const grafo = normalizarGrafo(registro);
+    cerrarModal("modal-guardados");
+    aplicarGrafo(grafo);
+    mostrarToast(`Ejercicio «${registro.nombre}» cargado`);
+  } catch (e) {
+    mostrarToast("El ejercicio guardado está dañado: " + e.message);
+  }
+}
+
+function eliminarEjercicio(id) {
+  const lista = leerEjercicios();
+  const registro = lista.find((e) => e.id === id);
+  if (!registro || !window.confirm(`¿Eliminar «${registro.nombre}»?`)) return;
+  escribirEjercicios(lista.filter((e) => e.id !== id));
+  renderizarListaGuardados();
+}
+
+/* ============ 2. EXPORTACIÓN A PDF ============ */
+const celdasDeBloques = (bloques) => {
+  const celdas = new Set();
+  bloques.forEach(([a, b]) => {
+    for (let i = a; i <= b; i++) for (let j = a; j <= b; j++) celdas.add(`${i},${j}`);
+  });
+  return celdas;
+};
+
+const colorPorComponente = (componentes) => {
+  const mapa = {};
+  componentes.forEach((comp, k) => comp.forEach((nodo) => { mapa[nodo - 1] = PALETA_COMPONENTES[k % PALETA_COMPONENTES.length]; }));
+  return (i) => mapa[i];
+};
+
+/** Imagen (data URL) del grafo con cada componente en un color. */
+function imagenDelGrafo(componentes) {
+  const canvas = document.createElement("canvas");
+  const c = prepararLienzo(canvas);
+  trazarGrafo(c, matriz, etiquetas, posiciones || posicionesEnCirculo(n), { colorNodo: colorPorComponente(componentes) });
+  return canvas.toDataURL("image/png");
+}
+
+/** Informe completo (todas las etapas + solución) para el PDF, independiente de la etapa visible. */
+function construirInforme(proc) {
+  const E = etiquetas;
+  const etqOrden = proc.orden.map((i) => E[i]);
+  const fecha = new Date().toLocaleString("es", { dateStyle: "long", timeStyle: "short" });
+
+  const estilos = crearElemento("style", {}, `
+    .informe{font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;color:#0A2342;background:#fff;line-height:1.45}
+    .informe h1{font-size:20px;margin:0 0 2px}
+    .informe h2{font-size:14px;margin:0 0 3px}
+    .informe p{font-size:11.5px;color:#4A5B72;margin:0 0 6px}
+    .informe .pdf-bloque{margin:0 0 14px;padding-top:4px}
+    .informe .matriz-marco{max-width:calc(var(--cols,5)*34px + 36px)}
+    .informe .celda{font-size:11px}
+    .informe .celda--bloque{box-shadow:none}
+    .informe .res{font-size:13px;margin:0 0 4px;color:#0A2342}
+  `);
+
+  const seccion = (titulo, descripcion, ...contenido) => crearElemento("div", { className: "pdf-bloque" },
+    crearElemento("h2", { texto: titulo }),
+    descripcion ? crearElemento("p", { texto: descripcion }) : "",
+    ...contenido);
+
+  const textoNuevos = (it) => {
+    const lista = it.nuevos.slice(0, 24).map(([i, j, t]) => `${E[i]}→${E[t]}→${E[j]}`).join(", ");
+    return it.nuevos.length > 24 ? `${lista} y ${it.nuevos.length - 24} más` : lista;
+  };
+
+  const bloquesBorde = crearMatrizDOM(proc.R_final, etqOrden, etqOrden);
+  proc.bloques.forEach(([a, b]) => {
+    bloquesBorde.querySelectorAll(".celda[data-i]").forEach((celda) => {
+      const i = Number(celda.dataset.i);
+      const j = Number(celda.dataset.j);
+      if (i < a || i > b || j < a || j > b) return;
+      const borde = "2px solid #0A2342";
+      if (i === a) celda.style.borderTop = borde;
+      if (i === b) celda.style.borderBottom = borde;
+      if (j === a) celda.style.borderLeft = borde;
+      if (j === b) celda.style.borderRight = borde;
+    });
+  });
+
+  const diagonal = new Set(E.map((_, i) => `${i},${i}`));
+  const raiz = crearElemento("div", { className: "informe" },
+    estilos,
+    crearElemento("div", { className: "pdf-bloque" },
+      crearElemento("h1", { texto: "Componentes conexas de un grafo dirigido" }),
+      crearElemento("p", { texto: `${n} nodos · ${fecha}` })),
+    seccion("Matriz de adyacencia", "Un 1 en la posición (i, j) indica una arista de i hacia j.", crearMatrizDOM(matriz, E, E)),
+    seccion("Paso 1: matriz con diagonal", "Se agrega el valor 1 en toda la diagonal principal (celdas azules).",
+      crearMatrizDOM(proc.M1, E, E, { diagonal })));
+
+  proc.iteraciones.forEach((it) => {
+    const nuevos = new Set(it.nuevos.map(([i, j]) => `${i},${j}`));
+    raiz.append(seccion(
+      `Paso 2: M^${it.exponente} = M^${it.exponente - 1} · M`,
+      it.estable
+        ? "Al multiplicar otra vez no aparecen 1's nuevos: ya se encontraron todos los caminos."
+        : `1's nuevos en naranja (origen→intermedio→destino): ${textoNuevos(it)}.`,
+      crearMatrizDOM(it.matriz, E, E, { nuevos })));
+  });
+
+  raiz.append(
+    seccion("Paso 2: matriz de caminos M_R∞", "Indica qué nodos son alcanzables desde cada nodo.", crearMatrizDOM(proc.R, E, E)),
+    seccion("Paso 3: filas ordenadas", "Filas ordenadas por cantidad de 1's (de mayor a menor); en empate, el primer 1 más cercano a la primera columna.",
+      crearMatrizDOM(proc.R_filas, etqOrden, E)),
+    seccion("Paso 4: columnas ordenadas y bloques", "Los bloques cuadrados diagonales marcados con borde grueso son las componentes conexas.", bloquesBorde),
+    seccion("Resultado", `Número total de componentes conexas: ${proc.componentes.length}`,
+      ...proc.componentes.map((comp, k) => crearElemento("p", {
+        className: "res",
+        texto: `V${k + 1} = {${comp.map((nodo) => E[nodo - 1]).join(", ")}}`,
+      })),
+      crearElemento("img", {
+        src: imagenDelGrafo(proc.componentes),
+        alt: "Grafo con sus componentes conexas",
+        estilo: "display:block;width:320px;height:320px;margin:8px auto 0;border:1px solid #E2E6EC;border-radius:8px",
+      })));
+  return raiz;
+}
+
+async function descargarPDF() {
+  if (typeof html2pdf === "undefined") {
+    mostrarToast("No se pudo cargar html2pdf. Revisa tu conexión a internet.");
+    return;
+  }
+  const boton = $("btn-pdf");
+  const textoOriginal = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = "Generando PDF…";
+
+  try {
+    const informe = construirInforme(calcularProcedimiento(matriz));
+    await html2pdf().set({
+      margin: [10, 10, 10, 10],
+      filename: `informe_componentes_${n}nodos.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: ["css", "legacy"], avoid: ".pdf-bloque" },
+    }).from(informe).save();
+    mostrarToast("PDF descargado");
+  } catch (e) {
+    mostrarToast("No se pudo generar el PDF.");
+  } finally {
+    boton.disabled = false;
+    boton.textContent = textoOriginal;
+  }
+}
+
+/* ============ 3A. IMPORTAR GRAFO DESDE UNA IMAGEN QR ============ */
+function abrirModalImportarQR() {
+  $("mensaje-qr").textContent = "";
+  $("archivo-qr").value = "";
+  abrirModal("modal-qr");
+}
+
+async function importarDesdeImagenQR(archivo) {
+  const mensaje = $("mensaje-qr");
+  if (typeof Html5Qrcode === "undefined") {
+    mensaje.textContent = "No se pudo cargar el lector de QR. Revisa tu conexión a internet.";
+    return;
+  }
+  mensaje.textContent = "Leyendo código…";
+  const lector = new Html5Qrcode("lector-qr");
+
+  try {
+    let texto;
+    try {
+      texto = await lector.scanFile(archivo, false);
+    } catch (e) {
+      mensaje.textContent = "No se detectó ningún código QR. Usa una imagen nítida y con borde blanco alrededor del código.";
+      return;
+    }
+
+    let grafo;
+    try {
+      grafo = decodificarGrafoDeQR(texto);
+    } catch (e) {
+      mensaje.textContent = e.message;
+      return;
+    }
+
+    mensaje.textContent = "";
+    cerrarModal("modal-qr");
+    aplicarGrafo(grafo);
+    mostrarToast("Grafo importado desde el código QR");
+  } finally {
+    try {
+      const r = lector.clear();
+      if (r && r.catch) r.catch(() => {});
+    } catch (e) { /* nada que limpiar */ }
+  }
+}
+
+/* ============ 3B. COMPARTIR: GENERAR QR (qrcodejs por CDN, carga diferida) ============ */
+function asegurarModalCompartir() {
+  if ($("modal-compartir")) return;
+  const descargar = crearElemento("button", { type: "button", className: "btn btn--primario", texto: "Descargar QR (.png)" });
+  const cerrar = crearElemento("button", { type: "button", className: "btn btn--secundario", texto: "Cerrar" });
+  descargar.addEventListener("click", descargarQR);
+  cerrar.addEventListener("click", () => cerrarModal("modal-compartir"));
+
+  const modal = crearElemento("div", {
+    id: "modal-compartir", className: "modal oculto", role: "dialog", "aria-modal": "true", "aria-labelledby": "t-modal-compartir",
+  },
+    crearElemento("div", { className: "modal__caja" },
+      crearElemento("h3", { id: "t-modal-compartir", className: "card__subtitulo", texto: "Compartir por código QR" }),
+      crearElemento("p", { className: "card__texto", texto: "Guarda la imagen y envíasela a un compañero: podrá abrirla con «Cargar QR»." }),
+      crearElemento("div", { id: "contenedor-qr", estilo: "display:flex;justify-content:center;margin:1rem 0 .5rem;padding:16px;background:#fff;border:1px solid #E2E6EC;border-radius:12px;min-height:288px;align-items:center" }),
+      crearElemento("p", { id: "info-qr", className: "nota", role: "status" }),
+      crearElemento("div", { className: "controles" }, descargar, cerrar)));
+
+  modal.addEventListener("click", (e) => { if (e.target === modal) cerrarModal("modal-compartir"); });
+  document.body.appendChild(modal);
+}
+
+/** Dibuja el QR con corrección M y, si no cabe, con L. Devuelve false si el texto es demasiado largo. */
+function dibujarQR(contenedor, texto) {
+  for (const nivel of [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L]) {
+    contenedor.replaceChildren();
+    try {
+      new QRCode(contenedor, { text: texto, width: 256, height: 256, colorDark: "#000000", colorLight: "#ffffff", correctLevel: nivel });
+      return true;
+    } catch (e) { /* probar con menos corrección */ }
+  }
+  contenedor.replaceChildren();
+  return false;
+}
+
+async function abrirModalCompartirQR() {
+  if (!matriz.length) {
+    mostrarToast("Primero crea un grafo.");
+    return;
+  }
+  asegurarModalCompartir();
+  const contenedor = $("contenedor-qr");
+  const info = $("info-qr");
+  contenedor.replaceChildren();
+  info.textContent = "Generando código QR…";
+  abrirModal("modal-compartir");
+
+  try {
+    await cargarScript(URL_QRCODEJS);
+  } catch (e) {
+    info.textContent = "No se pudo cargar la librería de QR. Revisa tu conexión a internet.";
+    return;
+  }
+
+  const texto = codificarGrafoParaQR();
+  info.textContent = dibujarQR(contenedor, texto)
+    ? `Grafo de ${n} nodos codificado en ${texto.length} caracteres.`
+    : "El grafo es demasiado grande para un código QR (acorta los nombres de los nodos).";
+}
+
+/** Descarga el QR como PNG con un margen blanco, necesario para que otros lectores lo reconozcan. */
+function descargarQR() {
+  const origen = $("contenedor-qr").querySelector("canvas") || $("contenedor-qr").querySelector("img");
+  if (!origen) {
+    mostrarToast("Todavía no hay un código QR para descargar.");
+    return;
+  }
+  const margen = 32;
+  const lado = origen.width || 256;
+  const salida = document.createElement("canvas");
+  salida.width = salida.height = lado + 2 * margen;
+  const c = salida.getContext("2d");
+  c.fillStyle = "#ffffff";
+  c.fillRect(0, 0, salida.width, salida.height);
+  c.drawImage(origen, margen, margen, lado, lado);
+
+  const enlace = crearElemento("a", { href: salida.toDataURL("image/png"), download: `grafo_${n}nodos_qr.png` });
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+}
+
+/* ============ CONEXIÓN DE EVENTOS ============ */
+function inicializarAvanzadas() {
+  // El modal de QR solo admite imagen (no cámara): se ajusta el texto del HTML
+  const aviso = document.querySelector("#modal-qr .card__texto");
+  if (aviso) aviso.textContent = "Sube una imagen con el código QR de un grafo exportado desde esta aplicación.";
+
+  // Ejercicios guardados
+  $("btn-guardar").addEventListener("click", guardarEjercicio);
+  $("btn-guardados").addEventListener("click", abrirModalGuardados);
+  $("btn-cerrar-guardados").addEventListener("click", () => cerrarModal("modal-guardados"));
+
+  // Importar QR
+  $("btn-qr").addEventListener("click", abrirModalImportarQR);
+  $("btn-cerrar-qr").addEventListener("click", () => cerrarModal("modal-qr"));
+  $("archivo-qr").addEventListener("change", (e) => {
+    const archivo = e.target.files[0];
+    if (archivo) importarDesdeImagenQR(archivo);
+    e.target.value = "";
+  });
+
+  // Compartir QR: el botón se añade a la botonera de la pantalla de edición
+  const botonCompartir = crearElemento("button", { type: "button", id: "btn-compartir-qr", className: "btn btn--secundario", texto: "Compartir QR" });
+  $("btn-guardar").after(botonCompartir);
+  botonCompartir.addEventListener("click", abrirModalCompartirQR);
+
+  // PDF
+  $("btn-pdf").addEventListener("click", descargarPDF);
+
+  // Cierre de modales: clic en el fondo y tecla Escape
+  ["modal-qr", "modal-guardados"].forEach((id) => {
+    $(id).addEventListener("click", (e) => { if (e.target === $(id)) cerrarModal(id); });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const abierto = IDS_MODALES.find((id) => $(id) && !$(id).classList.contains("oculto"));
+    if (abierto) cerrarModal(abierto);
+  });
+}
+
+inicializarAvanzadas();
+
+
+/* ==========================================================================
+   PANTALLA 3 · pasos y solución (renderizador visual)
+   ========================================================================== */
+
+let vistasPantalla3 = [];      // una entrada por etapa: { tipo, titulo, descripcion, extra, tabla }
+let vistaActual = 0;
+let reproduciendo = false;
+let temporizadorPasos = null;
+const ctxResultado = prepararLienzo($("lienzo-resultado"));
+
+/* ---------- Textos de apoyo (mismos que la versión Python) ---------- */
+function textoNuevos(E, it) {
+  if (it.estable) {
+    return `M^${it.exponente} es igual a M^${it.exponente - 1}: ya no aparecen 1's nuevos, ` +
+      `así que la matriz de caminos es M^${it.exponente - 1}.`;
+  }
+  const maximo = 12;
+  const partes = it.nuevos.slice(0, maximo).map(([i, j, t]) => `${E[i]}→${E[j]} (por ${E[t]})`);
+  let texto = "1's nuevos (naranja): " + partes.join(", ");
+  if (it.nuevos.length > maximo) texto += ` ... (y ${it.nuevos.length - maximo} más)`;
+  return texto;
+}
+
+function textoAlcance(R, E) {
+  const lineas = R.map((fila, i) => {
+    const alcanzables = E.filter((_, j) => fila[j] === 1);
+    return `${E[i]} llega hasta: ${alcanzables.join(", ")}`;
+  });
+  return "Nodos alcanzables desde cada nodo:\n" + lineas.join("\n");
+}
+
+function textoCantidades(R, orden, E) {
+  const cantidades = orden.map((i) => `${E[i]} tiene ${R[i].reduce((a, v) => a + v, 0)}`);
+  return "Cantidad de 1's por fila (en el orden mostrado):\n" + cantidades.join(", ");
+}
+
+/* ---------- 1. Array de vistas ---------- */
+/** Convierte el objeto `procedimiento` en la lista de etapas: Paso 1, potencias, caminos, filas, columnas y solución. */
+function construirVistasPantalla3(proc) {
+  const E = etiquetas;
+  const etqOrden = proc.orden.map((i) => E[i]);
+
+  const diagonal = new Set();
+  E.forEach((_, i) => { if (matriz[i][i] === 0) diagonal.add(`${i},${i}`); });
+
+  const vistas = [{
+    tipo: "paso1",
+    titulo: "Paso 1: Matriz de adyacencia + diagonal",
+    descripcion: "Se construye la matriz de adyacencia del grafo y se agrega el valor 1 en toda la diagonal principal.",
+    extra: diagonal.size > 0 ? "Los 1's agregados en la diagonal se muestran en azul." : "",
+    tabla: { M: proc.M1, filas: E, cols: E, opciones: { diagonal } },
+  }];
+
+  proc.iteraciones.forEach((it) => {
+    const k = it.exponente;
+    vistas.push({
+      tipo: "potencia",
+      titulo: `Paso 2: calculando M^${k} = M^${k - 1} · M`,
+      descripcion: it.estable
+        ? "Se multiplica otra vez la matriz anterior por M (producto booleano) y el resultado no cambia: ya se encontraron todos los caminos."
+        : "Se multiplica (producto booleano) la matriz anterior por la matriz M del Paso 1: hay un 1 en la posición (i, j) " +
+          `si i llega a algún nodo t y desde t hay una arista hacia j. Como la diagonal tiene 1's, M^${k} incluye los caminos de hasta ${k} pasos. ` +
+          "Los 1's nuevos se marcan en naranja.",
+      extra: textoNuevos(E, it),
+      tabla: { M: it.matriz, filas: E, cols: E, opciones: { nuevos: new Set(it.nuevos.map(([i, j]) => `${i},${j}`)) } },
+    });
+  });
+
+  vistas.push({
+    tipo: "caminos",
+    titulo: "Paso 2: Matriz de caminos (resultado)",
+    descripcion: "Cuando al multiplicar ya no aparecen 1's nuevos se obtiene la matriz de caminos M_R∞: indica qué nodos son alcanzables desde cada nodo.",
+    extra: textoAlcance(proc.R, E),
+    tabla: { M: proc.R, filas: E, cols: E, opciones: {} },
+  });
+
+  vistas.push({
+    tipo: "filas",
+    titulo: "Paso 3: Ordenar filas",
+    descripcion: "Se ordenan las filas según la cantidad de 1's que contienen (de mayor a menor). En caso de empate, se prioriza la fila cuyo primer 1 esté más cerca de la primera columna.",
+    extra: textoCantidades(proc.R, proc.orden, E),
+    tabla: { M: proc.R_filas, filas: etqOrden, cols: E, opciones: {} },
+  });
+
+  vistas.push({
+    tipo: "columnas",
+    titulo: "Paso 4: Ordenar columnas y formar bloques",
+    descripcion: "Se reordenan las columnas en el mismo orden que las filas. Los bloques cuadrados diagonales formados por 1's, marcados con borde grueso azul marino, son las componentes conexas.",
+    extra: "",
+    tabla: { M: proc.R_final, filas: etqOrden, cols: etqOrden, opciones: { bloques: celdasDeBloques(proc.bloques) } },
+  });
+
+  vistas.push({
+    tipo: "resultado",
+    titulo: "Resultado: Componentes conexas",
+    descripcion: "",
+    extra: "",
+    tabla: null,
+  });
+
+  return vistas;
+}
+
+/* ---------- 2. Renderizado de la etapa actual ---------- */
+function mostrarSolucion() {
+  const proc = procedimiento;
+  const colorDe = colorPorComponente(proc.componentes);
+  const k = proc.componentes.length;
+
+  $("resumen-total").textContent = `Número total de componentes conexas: ${k}`;
+  $("lista-componentes").replaceChildren(...proc.componentes.map((comp, idx) => crearElemento("li", { className: "componente" },
+    crearElemento("span", {
+      "aria-hidden": "true",
+      estilo: `width:14px;height:14px;border-radius:50%;flex:none;border:2px solid #0A2342;background:${PALETA_COMPONENTES[idx % PALETA_COMPONENTES.length]}`,
+    }),
+    crearElemento("span", { className: "componente__nombre", texto: `V${idx + 1}` }),
+    crearElemento("span", { className: "componente__nodos", texto: `{${comp.map((nodo) => etiquetas[nodo - 1]).join(", ")}}` }),
+    crearElemento("span", { className: "nota", estilo: "margin:0 0 0 auto;min-height:0", texto: `${comp.length} ${comp.length === 1 ? "nodo" : "nodos"}` }))));
+
+  trazarGrafo(ctxResultado, matriz, etiquetas, posiciones || posicionesEnCirculo(n), { colorNodo: colorDe });
+}
+
+function mostrarVistaActual(indice = vistaActual) {
+  const total = vistasPantalla3.length;
+  vistaActual = Math.min(Math.max(indice, 0), total - 1);
+  const vista = vistasPantalla3[vistaActual];
+
+  $("etapa-contador").textContent = `Etapa ${vistaActual + 1} de ${total}`;
+  $("barra-etapas").style.width = `${((vistaActual + 1) / total) * 100}%`;
+  $("btn-anterior").disabled = vistaActual === 0;
+  $("btn-siguiente").disabled = vistaActual === total - 1;
+
+  const esSolucion = vista.tipo === "resultado";
+  $("zona-pasos").classList.toggle("oculto", esSolucion);
+  $("panel-resultado").classList.toggle("oculto", !esSolucion);
+
+  if (esSolucion) {
+    mostrarSolucion();
+    return;
+  }
+
+  $("paso-titulo").textContent = vista.titulo;
+  $("paso-descripcion").textContent = vista.descripcion;
+  $("paso-extra").textContent = vista.extra;
+  const { M, filas, cols, opciones } = vista.tabla;
+  $("paso-matriz").replaceChildren(crearMatrizDOM(M, filas, cols, opciones));
+}
+
+/** Calcula el procedimiento (si hace falta), arma las vistas y muestra la primera etapa. */
+function iniciarPasos() {
+  detenerReproduccion();
+  if (!procedimiento) procedimiento = calcularProcedimiento(matriz);
+  vistasPantalla3 = construirVistasPantalla3(procedimiento);
+  mostrarVistaActual(0);
+}
+
+/* ---------- 3. Botones: anterior, siguiente y reproducción automática ---------- */
+function irAnterior() {
+  detenerReproduccion();
+  mostrarVistaActual(vistaActual - 1);
+}
+
+function irSiguiente() {
+  detenerReproduccion();
+  mostrarVistaActual(vistaActual + 1);
+}
+
+function detenerReproduccion() {
+  reproduciendo = false;
+  clearTimeout(temporizadorPasos);
+  temporizadorPasos = null;
+  $("btn-reproducir").textContent = "Reproducir";
+}
+
+function programarSiguiente() {
+  temporizadorPasos = setTimeout(avanzarAutomatico, Number($("select-velocidad").value));
+}
+
+function avanzarAutomatico() {
+  if (!reproduciendo) return;
+  if (vistaActual < vistasPantalla3.length - 1) mostrarVistaActual(vistaActual + 1);
+  if (vistaActual < vistasPantalla3.length - 1) programarSiguiente();
+  else detenerReproduccion();
+}
+
+function alternarReproduccion() {
+  if (reproduciendo) {
+    detenerReproduccion();
+    return;
+  }
+  if (vistaActual === vistasPantalla3.length - 1) mostrarVistaActual(0);   // al final: reinicia desde el Paso 1
+  reproduciendo = true;
+  $("btn-reproducir").textContent = "Pausar";
+  programarSiguiente();
+}
+
+function inicializarPasos() {
+  $("paso-extra").style.whiteSpace = "pre-line";     // respeta los saltos de línea del texto de alcance
+  $("btn-anterior").addEventListener("click", irAnterior);
+  $("btn-siguiente").addEventListener("click", irSiguiente);
+  $("btn-reproducir").addEventListener("click", alternarReproduccion);
+  ["btn-volver-edicion", "btn-volver-edicion-resultado"].forEach((id) => $(id).addEventListener("click", mostrarPantallaEdicion));
+}
+
+inicializarPasos();
+
+
+/* ==========================================================================
+   NOMBRAR NODOS · modal para elegir un estilo de nombres para todos los nodos
+   Estilos: Números (1–999), Letras (A–Z / a–z) y Prefijo + número (Q1…Q99).
+   ========================================================================== */
+ 
+IDS_MODALES.push("modal-nombres");     // para que Escape también cierre este modal
+ 
+/* ============ NOMBRES_LOGICA_INICIO · funciones puras (sin DOM) ============ */
+const ultimaLetra = (texto) => (texto.match(/[A-Za-z]/g) || []).pop() || "";
+const soloDigitos = (texto, maximo) => texto.replace(/\D/g, "").replace(/^0+/, "").slice(0, maximo);
+ 
+/** Deja en un campo solo lo permitido por el estilo: una letra, o dígitos sin ceros a la izquierda. */
+function filtrarValorNodo(texto, estilo, mayusculas) {
+  if (estilo === "letras") {
+    const letra = ultimaLetra(texto);
+    return mayusculas ? letra.toUpperCase() : letra.toLowerCase();
+  }
+  return soloDigitos(texto, estilo === "numeros" ? 3 : 2);
+}
+ 
+/** Valor consecutivo por posición: A, B, C… / a, b, c… / 1, 2, 3… */
+function valorPorDefectoNodo(posicion, estilo, mayusculas) {
+  if (estilo === "letras") return String.fromCharCode((mayusculas ? 65 : 97) + posicion);
+  return String(posicion + 1);
+}
+ 
+/** "Rellenar": completa los nodos de forma consecutiva a partir del valor del nodo 1. */
+function calcularRelleno(estilo, mayusculas, primero, cantidad) {
+  const texto = primero.trim();
+  if (!texto) return { error: "Escribe primero el valor del nodo 1." };
+ 
+  if (estilo === "letras") {
+    if (!/^[A-Za-z]$/.test(texto)) return { error: "El nodo 1 debe ser una letra." };
+    const inicio = (mayusculas ? texto.toUpperCase() : texto.toLowerCase()).charCodeAt(0);
+    const ultima = (mayusculas ? "Z" : "z").charCodeAt(0);
+    if (inicio + cantidad - 1 > ultima) {
+      return {
+        error: `Desde la letra ${String.fromCharCode(ultima - cantidad + 2)} no alcanza para ${cantidad} nodos. ` +
+          `La última letra desde la que se puede empezar es ${String.fromCharCode(ultima - cantidad + 1)}.`,
+      };
+    }
+    return { valores: Array.from({ length: cantidad }, (_, i) => String.fromCharCode(inicio + i)) };
+  }
+ 
+  const inicio = parseInt(texto, 10);
+  const maximo = estilo === "numeros" ? 999 : 99;
+  if (inicio + cantidad - 1 > maximo) {
+    return {
+      error: `Desde el número ${maximo - cantidad + 2} no alcanza para ${cantidad} nodos. ` +
+        `El último número desde el que se puede empezar es ${maximo - cantidad + 1}.`,
+    };
+  }
+  return { valores: Array.from({ length: cantidad }, (_, i) => String(inicio + i)) };
+}
+ 
+/** "Aceptar": valida los campos y devuelve { nombres } o { error }. Rechaza nombres repetidos. */
+function construirNombres(estilo, mayusculas, prefijo, valores) {
+  if (estilo === "prefijo" && !prefijo) return { error: "Escribe la letra del prefijo." };
+ 
+  const limpios = valores.map((v) => v.trim());
+  const vacio = limpios.findIndex((v) => v === "");
+  if (vacio >= 0) return { error: `El nodo ${vacio + 1} no tiene valor.` };
+ 
+  let nombres;
+  if (estilo === "letras") {
+    nombres = limpios.map((v) => (mayusculas ? v.toUpperCase() : v.toLowerCase()));
+  } else if (estilo === "numeros") {
+    nombres = limpios.map((v) => String(parseInt(v, 10)));
+  } else {
+    const numeros = limpios.map((v) => parseInt(v, 10));
+    const digitos = Math.max(...numeros) >= 10 ? 2 : 1;      // si alguno es 10 o más, todos con 2 dígitos (Q01…Q12)
+    nombres = numeros.map((x) => prefijo + String(x).padStart(digitos, "0"));
+  }
+ 
+  const vistos = new Map();
+  for (let i = 0; i < nombres.length; i++) {
+    if (vistos.has(nombres[i])) {
+      return { error: `El nombre «${nombres[i]}» está repetido en los nodos ${vistos.get(nombres[i]) + 1} y ${i + 1}.` };
+    }
+    vistos.set(nombres[i], i);
+  }
+  return { nombres };
+}
+ 
+/** Detecta el estilo de los nombres actuales para abrir el modal con ese estilo. null = estilo mixto. */
+function detectarEstiloNombres(actuales) {
+  if (actuales.every((x) => /^[A-Z]$/.test(x))) return { estilo: "letras", caso: "mayusculas" };
+  if (actuales.every((x) => /^[a-z]$/.test(x))) return { estilo: "letras", caso: "minusculas" };
+  if (actuales.every((x) => /^\d+$/.test(x) && +x >= 1 && +x <= 999)) return { estilo: "numeros" };
+ 
+  const prefijos = actuales.map((x) => (/^[A-Za-z]\d+$/.test(x) && +x.slice(1) >= 1 && +x.slice(1) <= 99 ? x[0] : null));
+  if (prefijos.every((p) => p !== null) && new Set(prefijos).size === 1) return { estilo: "prefijo", prefijo: prefijos[0] };
+  return null;
+}
+/* ============ NOMBRES_LOGICA_FIN ============ */
+ 
+/* ============ INTERFAZ DEL MODAL ============ */
+const AYUDA_NOMBRES = {
+  numeros: "Escribe un número del 1 al 999 en cada nodo.",
+  letras: "Escribe una letra en cada nodo (se ajusta sola a mayúscula o minúscula).",
+  prefijo: "Escribe la letra del prefijo y un número del 1 al 99 en cada nodo. " +
+    "Si algún número es 10 o más, todos quedan con 2 dígitos (Q01, Q02… Q12).",
+};
+ 
+const estiloNombres = () => $("select-estilo-nombres").value;
+const mayusculasNombres = () => $("select-caso-nombres").value === "mayusculas";
+const camposNombres = () => [...$("grilla-nombres").querySelectorAll("input")];
+ 
+function mostrarErrorNombres(mensaje) {
+  const caja = $("error-nombres");
+  caja.textContent = mensaje || "";
+  caja.classList.toggle("oculto", !mensaje);
+}
+ 
+/** Un <input> por cada nodo actual (n). */
+function construirGrillaNombres() {
+  $("grilla-nombres").replaceChildren(...Array.from({ length: n }, (_, i) => crearElemento("label", { className: "campo-nodo" },
+    crearElemento("span", { className: "campo-nodo__nombre", texto: `Nodo ${i + 1}` }),
+    crearElemento("span", { className: "campo-nodo__prefijo", "aria-hidden": "true" }),
+    crearElemento("input", {
+      type: "text", className: "campo-nodo__input", autocomplete: "off", spellcheck: "false", "aria-label": `Nombre del nodo ${i + 1}`,
+    }))));
+}
+ 
+/** Muestra u oculta las opciones según el estilo: "Letras en" solo con Letras, prefijo solo con Prefijo + número. */
+function actualizarOpcionesNombres() {
+  const estilo = estiloNombres();
+  $("campo-caso-nombres").classList.toggle("oculto", estilo !== "letras");
+  $("campo-prefijo-nombres").classList.toggle("oculto", estilo !== "prefijo");
+  $("ayuda-nombres").textContent = `${AYUDA_NOMBRES[estilo]} Con «Rellenar» se completan los demás nodos a partir del primero.`;
+ 
+  const prefijo = estilo === "prefijo" ? $("input-prefijo-nombres").value : "";
+  $("grilla-nombres").querySelectorAll(".campo-nodo__prefijo").forEach((s) => { s.textContent = prefijo; });
+  camposNombres().forEach((campo) => campo.setAttribute("inputmode", estilo === "letras" ? "text" : "numeric"));
+}
+ 
+/** "Por defecto": nombres consecutivos del estilo elegido (A, B, C… o 1, 2, 3…). */
+function aplicarPorDefectoNombres() {
+  const estilo = estiloNombres();
+  if (estilo === "prefijo" && !$("input-prefijo-nombres").value) $("input-prefijo-nombres").value = "Q";
+  camposNombres().forEach((campo, i) => { campo.value = valorPorDefectoNodo(i, estilo, mayusculasNombres()); });
+  actualizarOpcionesNombres();
+  mostrarErrorNombres("");
+}
+ 
+function rellenarNombres() {
+  const campos = camposNombres();
+  const resultado = calcularRelleno(estiloNombres(), mayusculasNombres(), campos[0].value, n);
+  if (resultado.error) return mostrarErrorNombres(resultado.error);
+  campos.forEach((campo, i) => { campo.value = resultado.valores[i]; });
+  mostrarErrorNombres("");
+}
+ 
+function aceptarNombres() {
+  const resultado = construirNombres(estiloNombres(), mayusculasNombres(), $("input-prefijo-nombres").value, camposNombres().map((c) => c.value));
+  if (resultado.error) return mostrarErrorNombres(resultado.error);
+ 
+  etiquetas = resultado.nombres;
+  cerrarModal("modal-nombres");
+  renderizarMatriz();
+  dibujarGrafo();
+  mostrarToast("Nombres de los nodos actualizados");
+}
+ 
+function abrirModalNombres() {
+  construirGrillaNombres();
+  const detectado = detectarEstiloNombres(etiquetas);
+ 
+  $("select-estilo-nombres").value = detectado ? detectado.estilo : "numeros";
+  $("select-caso-nombres").value = detectado && detectado.caso ? detectado.caso : "mayusculas";
+  $("input-prefijo-nombres").value = detectado && detectado.prefijo ? detectado.prefijo : "Q";
+ 
+  if (detectado) {                     // se conservan los nombres actuales
+    camposNombres().forEach((campo, i) => {
+      campo.value = detectado.estilo === "prefijo" ? etiquetas[i].slice(1) : etiquetas[i];
+    });
+    actualizarOpcionesNombres();
+    mostrarErrorNombres("");
+  } else {                             // nombres mezclados: se parte de los valores por defecto
+    aplicarPorDefectoNombres();
+  }
+  abrirModal("modal-nombres");
+  $("select-estilo-nombres").focus();
+}
+ 
+function inicializarNombres() {
+  $("btn-nombrar").addEventListener("click", abrirModalNombres);
+ 
+  // Al cambiar el estilo se reinician los nombres; al cambiar mayúsculas/minúsculas se convierten
+  $("select-estilo-nombres").addEventListener("change", aplicarPorDefectoNombres);
+  $("select-caso-nombres").addEventListener("change", () => {
+    camposNombres().forEach((campo) => { campo.value = filtrarValorNodo(campo.value, "letras", mayusculasNombres()); });
+  });
+ 
+  // El prefijo es una sola letra (se respeta q o Q)
+  $("input-prefijo-nombres").addEventListener("input", (e) => {
+    e.target.value = ultimaLetra(e.target.value);
+    actualizarOpcionesNombres();
+  });
+ 
+  // Filtro en cada campo de nodo (delegación de eventos); Enter acepta
+  $("grilla-nombres").addEventListener("input", (e) => {
+    e.target.value = filtrarValorNodo(e.target.value, estiloNombres(), mayusculasNombres());
+    mostrarErrorNombres("");
+  });
+  $("grilla-nombres").addEventListener("keydown", (e) => { if (e.key === "Enter") aceptarNombres(); });
+ 
+  $("btn-nombres-defecto").addEventListener("click", aplicarPorDefectoNombres);
+  $("btn-nombres-rellenar").addEventListener("click", rellenarNombres);
+  $("btn-nombres-aceptar").addEventListener("click", aceptarNombres);
+  $("btn-nombres-cancelar").addEventListener("click", () => cerrarModal("modal-nombres"));
+  $("modal-nombres").addEventListener("click", (e) => { if (e.target === $("modal-nombres")) cerrarModal("modal-nombres"); });
+}
+ 
+inicializarNombres();
+/* ==========================================================================
+   EDITAR ARISTA (MANUAL) · modal con Origen, Destino, Agregar, Quitar y Cerrar
+   ========================================================================== */
+ 
+IDS_MODALES.push("modal-arista");     // para que Escape también cierre este modal
+ 
+/** Llena un <select> con las etiquetas actuales (valor = índice del nodo). */
+function llenarSelectNodos(select, indiceInicial) {
+  select.replaceChildren(...etiquetas.map((nombre, i) => crearElemento("option", { value: String(i), texto: nombre })));
+  select.value = String(indiceInicial);
+}
+ 
+function mostrarMensajeArista(texto) {
+  $("mensaje-arista").textContent = texto;
+}
+ 
+function abrirModalArista() {
+  llenarSelectNodos($("select-origen"), 0);
+  llenarSelectNodos($("select-destino"), Math.min(1, n - 1));
+  mostrarMensajeArista("");
+  abrirModal("modal-arista");
+  $("select-origen").focus();
+}
+ 
+/** Origen y destino elegidos, o null (con aviso) si no se puede editar esa arista. */
+function leerParDeArista() {
+  const origen = Number($("select-origen").value);
+  const destino = Number($("select-destino").value);
+  if (origen === destino) {
+    mostrarMensajeArista("Origen y destino deben ser nodos distintos (la diagonal de la matriz siempre es 0).");
+    return null;
+  }
+  return [origen, destino];
+}
+ 
+function agregarAristaManual() {
+  const par = leerParDeArista();
+  if (!par) return;
+  const [o, d] = par;
+  if (matriz[o][d] === 1) {
+    mostrarMensajeArista(`La conexión ${etiquetas[o]} → ${etiquetas[d]} ya existe.`);
+    return;
+  }
+  matriz[o][d] = 1;
+  renderizarMatriz();
+  dibujarGrafo();
+  mostrarMensajeArista("");
+  mostrarToast(`Arista ${etiquetas[o]} → ${etiquetas[d]} agregada`);
+}
+ 
+function quitarAristaManual() {
+  const par = leerParDeArista();
+  if (!par) return;
+  const [o, d] = par;
+  if (matriz[o][d] === 0) {
+    mostrarMensajeArista(`La conexión ${etiquetas[o]} → ${etiquetas[d]} no existe.`);
+    return;
+  }
+  matriz[o][d] = 0;
+  renderizarMatriz();
+  dibujarGrafo();
+  mostrarMensajeArista("");
+  mostrarToast(`Arista ${etiquetas[o]} → ${etiquetas[d]} quitada`);
+}
+ 
+function inicializarEditarArista() {
+  $("btn-editar-arista").addEventListener("click", abrirModalArista);
+  $("btn-arista-agregar").addEventListener("click", agregarAristaManual);     // no cierran el modal
+  $("btn-arista-quitar").addEventListener("click", quitarAristaManual);
+  $("btn-arista-cerrar").addEventListener("click", () => cerrarModal("modal-arista"));
+  ["select-origen", "select-destino"].forEach((id) => $(id).addEventListener("change", () => mostrarMensajeArista("")));
+  $("modal-arista").addEventListener("click", (e) => { if (e.target === $("modal-arista")) cerrarModal("modal-arista"); });
+}
+ 
+inicializarEditarArista();
+
+
+/* ==========================================================================
+   ANÁLISIS DE NODO · a qué nodos llega directamente el nodo elegido
+   ========================================================================== */
+ 
+/** Llena #select-analisis con las etiquetas actuales y conserva el nodo elegido (si sigue existiendo). */
+function actualizarSelectAnalisis() {
+  const select = $("select-analisis");
+  const previo = Number(select.value);
+  const indice = Number.isInteger(previo) && previo >= 0 && previo < etiquetas.length ? previo : 0;
+  llenarSelectNodos(select, indice);
+  $("texto-analisis").textContent = "";      // el resultado anterior pudo quedar desactualizado
+}
+ 
+function analizarNodo() {
+  const salida = $("texto-analisis");
+  const idx = Number($("select-analisis").value);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= n) {
+    salida.textContent = "Elige un nodo de la lista.";
+    return;
+  }
+ 
+  const destinos = [];
+  matriz[idx].forEach((valor, j) => { if (valor === 1) destinos.push(`${etiquetas[idx]}->${etiquetas[j]}`); });
+ 
+  salida.textContent = `Nodo actual: ${etiquetas[idx]}\nConexiones: ${destinos.length ? destinos.join(", ") : "Ninguna"}`;
+}
+ 
+function inicializarAnalisis() {
+  $("btn-analizar").addEventListener("click", analizarNodo);
+}
+ 
+inicializarAnalisis();

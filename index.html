@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Componentes conexas · paso a paso</title>
+  <meta name="description" content="Componentes conexas de un grafo dirigido con el método de la matriz de caminos, paso a paso y en el navegador.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Íconos (Lucide, licencia ISC) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-dado" viewBox="0 0 24 24"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/></symbol>
+  <symbol id="i-lapiz" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></symbol>
+  <symbol id="i-carpeta" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+</svg>
+
+<!-- ========== HEADER ========== -->
+<header class="cabecera">
+  <div class="contenedor cabecera__fila">
+    <div class="marca">
+      <span class="marca__logo" aria-hidden="true">V</span>
+      <div>
+        <h1 class="marca__titulo">Componentes conexas</h1>
+        <p class="marca__sub">Algoritmo de la matriz de caminos, paso a paso</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ========== STEPPER ========== -->
+<nav class="stepper contenedor" aria-label="Progreso">
+  <ol id="stepper">
+    <li class="stepper__item activo" data-paso="1" aria-current="step"><span class="stepper__num">1</span><span class="stepper__txt">Inicio</span></li>
+    <li class="stepper__item" data-paso="2"><span class="stepper__num">2</span><span class="stepper__txt">Edición</span></li>
+    <li class="stepper__item" data-paso="3"><span class="stepper__num">3</span><span class="stepper__txt">Resultados</span></li>
+  </ol>
+</nav>
+
+<main class="contenedor">
+
+  <!-- ===== PANTALLA 1: BIENVENIDA ===== -->
+  <section id="pantalla-inicio" class="pantalla" aria-labelledby="t-inicio">
+    <article class="card">
+      <h2 id="t-inicio" class="card__titulo">Cantidad de nodos</h2>
+      <p class="card__texto">El grafo dirigido tendrá n nodos, con n ∈ [4, 12]. Se numeran 1, 2, 3…</p>
+      <div class="selector-n">
+        <button type="button" class="btn-circular" id="btn-menos" aria-label="Disminuir nodos">−</button>
+        <label class="selector-n__valor">
+          <span class="visualmente-oculto">Número de nodos n</span>
+          <input type="number" id="input-n" min="4" max="12" value="6" inputmode="numeric">
+        </label>
+        <button type="button" class="btn-circular" id="btn-mas" aria-label="Aumentar nodos">+</button>
+      </div>
+      <input type="range" id="rango-n" class="rango" min="4" max="12" value="6" aria-label="Deslizador de n">
+      <div class="rango-marcas" aria-hidden="true">
+        <span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
+      </div>
+    </article>
+
+    <article class="card">
+      <h2 class="card__titulo">¿Cómo quieres construir el grafo?</h2>
+      <p class="card__texto">Genera las conexiones al azar, defínelas a mano o recupera un grafo existente.</p>
+      <div class="opciones">
+        <button type="button" class="opcion" id="btn-aleatorio">
+          <svg class="icono" aria-hidden="true"><use href="#i-dado"/></svg>
+          <span class="opcion__titulo">Aleatorio</span>
+          <span class="opcion__texto">Aristas generadas al azar</span>
+        </button>
+        <button type="button" class="opcion" id="btn-manual">
+          <svg class="icono" aria-hidden="true"><use href="#i-lapiz"/></svg>
+          <span class="opcion__titulo">Manual</span>
+          <span class="opcion__texto">Tú defines cada conexión</span>
+        </button>
+        <button type="button" class="opcion" id="btn-qr">
+          <svg class="icono" aria-hidden="true"><use href="#i-qr"/></svg>
+          <span class="opcion__titulo">Cargar QR</span>
+          <span class="opcion__texto">Escanea o sube un código</span>
+        </button>
+        <button type="button" class="opcion" id="btn-guardados">
+          <svg class="icono" aria-hidden="true"><use href="#i-carpeta"/></svg>
+          <span class="opcion__titulo">Ejercicios guardados</span>
+          <span class="opcion__texto">Abre un grafo anterior</span>
+        </button>
+      </div>
+    </article>
+  </section>
+
+  <!-- ===== PANTALLA 2: MATRIZ Y GRAFO ===== -->
+  <section id="pantalla-edicion" class="pantalla oculto" aria-labelledby="t-edicion">
+    <div class="encabezado-seccion">
+      <h2 id="t-edicion" class="seccion__titulo">Matriz de adyacencia y grafo</h2>
+      <p id="texto-modo" class="card__texto">Revisa el grafo antes de ejecutar el algoritmo.</p>
+    </div>
+
+    <div class="dos-columnas">
+      <article class="card">
+        <h3 class="card__subtitulo">Matriz de adyacencia</h3>
+        <div id="contenedor-matriz" class="matriz-scroll"></div>
+        <p class="nota">Un 1 en la posición (i, j) indica una arista de i hacia j. En modo manual, haz clic en una celda para alternarla.</p>
+        
+        <!-- ===== ANÁLISIS DE NODO ===== -->
+        <div style="margin-top:1.1rem;padding:1rem;background:var(--fondo);border:1px solid var(--borde);border-radius:12px">
+          <h3 class="card__subtitulo" style="margin-bottom:.6rem">Análisis de nodo</h3>
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:.75rem">
+            <label class="campo">
+              <span class="campo__etiqueta">Nodo</span>
+              <select id="select-analisis" class="campo__control" style="min-width:7rem"></select>
+            </label>
+            <button type="button" class="btn btn--secundario" id="btn-analizar">Analizar</button>
+          </div>
+          <p id="texto-analisis" class="nota" role="status" style="white-space:pre-line"></p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3 class="card__subtitulo">Grafo dirigido</h3>
+        <canvas id="lienzo-grafo" class="lienzo" width="640" height="640" data-modo="mover" aria-label="Representación gráfica del grafo"></canvas>
+      </article>
+    </div>
+
+    <div class="botonera card" role="toolbar" aria-label="Herramientas del grafo">
+      <div class="botonera__grupo" role="group" aria-label="Herramienta de dibujo">
+        <button type="button" class="btn btn--herramienta" data-modo="mover" aria-pressed="true">Mover nodos</button>
+        <button type="button" class="btn btn--herramienta" data-modo="conectar" aria-pressed="false">Añadir arista</button>
+        <button type="button" class="btn btn--herramienta" data-modo="borrar" aria-pressed="false">Quitar arista</button>
+      </div>
+      <div class="botonera__grupo" role="group" aria-label="Acciones">
+        <button type="button" class="btn btn--secundario" id="btn-regenerar">Aleatorio</button>
+        <button type="button" class="btn btn--secundario" id="btn-limpiar">Limpiar</button>
+          <button type="button" class="btn btn--secundario" id="btn-editar-arista">Editar arista manual</button>
+        <button type="button" class="btn btn--secundario" id="btn-nombrar">Nombrar nodos</button>
+        <button type="button" class="btn btn--secundario" id="btn-guardar">Guardar ejercicio</button>
+      </div>
+      <div class="botonera__grupo botonera__grupo--fin">
+        <button type="button" class="btn btn--secundario" id="btn-volver-inicio">← Volver</button>
+        <button type="button" class="btn btn--primario" id="btn-ejecutar">Ejecutar algoritmo →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PANTALLA 3: PASOS Y ANÁLISIS ===== -->
+  <section id="pantalla-pasos" class="pantalla oculto" aria-labelledby="paso-titulo">
+    <article class="card" id="zona-pasos">
+      <div class="paso__cabecera">
+        <span id="etapa-contador" class="etiqueta-etapa">Etapa 1 de 1</span>
+        <div class="progreso" aria-hidden="true"><div id="barra-etapas" class="progreso__barra"></div></div>
+      </div>
+
+      <h2 id="paso-titulo" class="seccion__titulo">Paso 1</h2>
+      <p id="paso-descripcion" class="card__texto"></p>
+
+      <div id="paso-matriz" class="matriz-scroll"></div>
+      <p id="paso-extra" class="nota" role="status"></p>
+
+      <ul class="leyenda" aria-label="Leyenda de colores">
+        <li><span class="leyenda__color leyenda__color--diag"></span>Diagonal agregada</li>
+        <li><span class="leyenda__color leyenda__color--uno"></span>Conexión (1)</li>
+        <li><span class="leyenda__color leyenda__color--nuevo"></span>1 nuevo</li>
+        <li><span class="leyenda__color leyenda__color--bloque"></span>Bloque (componente)</li>
+      </ul>
+
+      <div class="controles">
+        <button type="button" class="btn btn--secundario" id="btn-anterior">← Anterior</button>
+        <button type="button" class="btn btn--secundario" id="btn-reproducir">Reproducir</button>
+        <button type="button" class="btn btn--primario" id="btn-siguiente">Siguiente →</button>
+        <button type="button" class="btn btn--secundario" id="btn-volver-edicion">← Volver a Edición</button>
+        <label class="controles__velocidad">Velocidad
+          <select id="select-velocidad">
+            <option value="2500">Lenta</option>
+            <option value="1500" selected>Normal</option>
+            <option value="700">Rápida</option>
+          </select>
+        </label>
+      </div>
+    </article>
+
+    <article class="card oculto" id="panel-resultado" aria-labelledby="t-resultado">
+      <div id="zona-informe">
+        <h2 id="t-resultado" class="seccion__titulo">Solución</h2>
+        <p id="resumen-total" class="resumen-total"></p>
+        <div class="dos-columnas dos-columnas--centrado">
+          <ul id="lista-componentes" class="componentes"></ul>
+          <canvas id="lienzo-resultado" class="lienzo" width="640" height="640" aria-label="Grafo con componentes coloreadas"></canvas>
+        </div>
+      </div>
+      <div class="controles">
+        <button type="button" class="btn btn--secundario" id="btn-volver-edicion-resultado">← Volver a Edición</button>
+        <button type="button" class="btn btn--secundario" id="btn-pdf">Descargar informe en PDF</button>
+        <button type="button" class="btn btn--primario" id="btn-nuevo">Nuevo grafo</button>
+      </div>
+    </article>
+  </section>
+</main>
+
+<footer class="pie contenedor">
+  <p>Créditos: íconos de <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a> (licencia ISC).</p>
+</footer>
+
+<!-- ===== MODALES ===== -->
+<div id="modal-qr" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-qr">
+  <div class="modal__caja">
+    <h3 id="t-modal-qr" class="card__subtitulo">Cargar código QR</h3>
+    <p class="card__texto">Apunta la cámara al código o sube una imagen que lo contenga.</p>
+    <div id="lector-qr" class="lector-qr"></div>
+    <input type="file" id="archivo-qr" accept="image/*" class="campo-archivo">
+    <p id="mensaje-qr" class="nota" role="status"></p>
+    <div class="controles"><button type="button" class="btn btn--secundario" id="btn-cerrar-qr">Cerrar</button></div>
+  </div>
+</div>
+
+<div id="modal-guardados" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-guardados">
+  <div class="modal__caja">
+    <h3 id="t-modal-guardados" class="card__subtitulo">Ejercicios guardados</h3>
+    <ul id="lista-guardados" class="guardados"></ul>
+    <p id="vacio-guardados" class="nota oculto">Aún no hay ejercicios. Crea un grafo y usa «Guardar ejercicio».</p>
+    <div class="controles"><button type="button" class="btn btn--secundario" id="btn-cerrar-guardados">Cerrar</button></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: EDITAR ARISTA (MANUAL) ===== -->
+<div id="modal-arista" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-arista">
+  <div class="modal__caja">
+    <h3 id="t-modal-arista" class="card__subtitulo">Editar arista</h3>
+    <p class="card__texto">Elige el origen y el destino, y presiona Agregar o Quitar. La arista va del origen hacia el destino.</p>
+ 
+    <div class="opciones-nombres">
+      <label class="campo">
+        <span class="campo__etiqueta">Origen</span>
+        <select id="select-origen" class="campo__control"></select>
+      </label>
+      <label class="campo">
+        <span class="campo__etiqueta">Destino</span>
+        <select id="select-destino" class="campo__control"></select>
+      </label>
+    </div>
+ 
+    <p id="mensaje-arista" class="nota" role="status"></p>
+ 
+    <div class="controles">
+      <button type="button" class="btn btn--primario" id="btn-arista-agregar">Agregar</button>
+      <button type="button" class="btn btn--secundario" id="btn-arista-quitar">Quitar</button>
+      <button type="button" class="btn btn--secundario" id="btn-arista-cerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- ===== MODAL: NOMBRAR NODOS ===== -->
+<div id="modal-nombres" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-nombres">
+  <div class="modal__caja modal__caja--ancha">
+    <h3 id="t-modal-nombres" class="card__subtitulo">Nombrar nodos</h3>
+    <p class="card__texto">Elige un estilo de nombres (el mismo para todos los nodos).</p>
+ 
+    <div class="opciones-nombres">
+      <label class="campo">
+        <span class="campo__etiqueta">Estilo</span>
+        <select id="select-estilo-nombres" class="campo__control">
+          <option value="numeros">Números</option>
+          <option value="letras">Letras</option>
+          <option value="prefijo">Prefijo + número</option>
+        </select>
+      </label>
+      <label class="campo oculto" id="campo-caso-nombres">
+        <span class="campo__etiqueta">Letras en</span>
+        <select id="select-caso-nombres" class="campo__control">
+          <option value="mayusculas">Mayúsculas</option>
+          <option value="minusculas">Minúsculas</option>
+        </select>
+      </label>
+      <label class="campo oculto" id="campo-prefijo-nombres">
+        <span class="campo__etiqueta">Prefijo</span>
+        <input type="text" id="input-prefijo-nombres" class="campo__control campo__control--corto" value="Q" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+ 
+    <p id="ayuda-nombres" class="nota"></p>
+    <div id="grilla-nombres" class="grilla-nombres"></div>
+    <p id="error-nombres" class="mensaje-error oculto" role="alert"></p>
+ 
+    <div class="controles">
+      <button type="button" class="btn btn--secundario" id="btn-nombres-defecto">Por defecto</button>
+      <button type="button" class="btn btn--secundario" id="btn-nombres-rellenar">Rellenar</button>
+      <button type="button" class="btn btn--primario" id="btn-nombres-aceptar">Aceptar</button>
+      <button type="button" class="btn btn--secundario" id="btn-nombres-cancelar">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast oculto" role="status" aria-live="polite"></div>
+
+<!-- ===== SCRIPTS (solo CDN, versiones globales) ===== -->
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

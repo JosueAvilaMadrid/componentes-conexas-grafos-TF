@@ -1044,11 +1044,40 @@ const colorPorComponente = (componentes) => {
   return (i) => mapa[i];
 };
 
+function calcularGrafoSeparado(componentes) {
+  const k = componentes.length;
+  const columnas = Math.ceil(Math.sqrt(k));
+  const filas = Math.ceil(k / columnas);
+  const anchoCelda = 1 / columnas;
+  const altoCelda = 1 / filas;
+  const radioAnillo = 0.34 * Math.min(anchoCelda, altoCelda);    // deja margen para los nodos dentro de la celda
+
+  const posSeparadas = new Array(matriz.length);
+  const compDe = new Array(matriz.length).fill(0);
+
+  componentes.forEach((componente, idx) => {
+    const cx = ((idx % columnas) + 0.5) * anchoCelda;
+    const cy = (Math.floor(idx / columnas) + 0.5) * altoCelda;
+    const m = componente.length;
+    const radio = m > 1 ? radioAnillo : 0;                        // un nodo solo va al centro de su celda
+
+    componente.forEach((nodo, t) => {
+      const angulo = (2 * Math.PI * t) / m - Math.PI / 2;         // el primer nodo arriba, como en el círculo original
+      posSeparadas[nodo - 1] = [cx + radio * Math.cos(angulo), cy + radio * Math.sin(angulo)];
+      compDe[nodo - 1] = idx;
+    });
+  });
+
+  const matrizSeparada = matriz.map((fila, i) => fila.map((valor, j) => (compDe[i] === compDe[j] ? valor : 0)));
+  return { posSeparadas, matrizSeparada };
+}
+
 /** Imagen (data URL) del grafo con cada componente en un color. */
 function imagenDelGrafo(componentes) {
   const canvas = document.createElement("canvas");
   const c = prepararLienzo(canvas);
-  trazarGrafo(c, matriz, etiquetas, posiciones || posicionesEnCirculo(n), { colorNodo: colorPorComponente(componentes) });
+  const { posSeparadas, matrizSeparada } = calcularGrafoSeparado(componentes);
+  trazarGrafo(c, matrizSeparada, etiquetas, posSeparadas, { colorNodo: colorPorComponente(componentes) });
   return canvas.toDataURL("image/png");
 }
 
@@ -1708,7 +1737,9 @@ function mostrarSolucion() {
     crearElemento("span", { className: "componente__nodos", texto: `{${comp.map((nodo) => etiquetas[nodo - 1]).join(", ")}}` }),
     crearElemento("span", { className: "nota", estilo: "margin:0 0 0 auto;min-height:0", texto: `${comp.length} ${comp.length === 1 ? "nodo" : "nodos"}` }))));
 
-  trazarGrafo(ctxResultado, matriz, etiquetas, posiciones || posicionesEnCirculo(n), { colorNodo: colorDe });
+  // Componentes separadas en una cuadrícula y sin las aristas que unen componentes distintas
+  const { posSeparadas, matrizSeparada } = calcularGrafoSeparado(proc.componentes);
+  trazarGrafo(ctxResultado, matrizSeparada, etiquetas, posSeparadas, { colorNodo: colorDe });
 }
 
 function mostrarVistaActual(indice = vistaActual) {

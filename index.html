@@ -27,6 +27,7 @@
         <p class="marca__sub">Algoritmo de la matriz de caminos, paso a paso</p>
       </div>
     </div>
+    <button type="button" class="btn btn--secundario btn--chico" id="btn-manual-uso">Manual de usuario</button>
   </div>
 </header>
 
@@ -225,6 +226,20 @@
     <ul id="lista-guardados" class="guardados"></ul>
     <p id="vacio-guardados" class="nota oculto">Aún no hay ejercicios. Crea un grafo y usa «Guardar ejercicio».</p>
     <div class="controles"><button type="button" class="btn btn--secundario" id="btn-cerrar-guardados">Cerrar</button></div>
+  </div>
+</div>
+
+<!-- ===== MODAL: MANUAL DE USUARIO ===== -->
+<div id="modal-manual" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-manual">
+  <div class="modal__caja manual__caja">
+    <div class="manual__cabecera">
+      <h2 id="t-modal-manual" class="card__titulo">Manual de usuario</h2>
+      <button type="button" class="btn btn--secundario btn--chico" id="btn-cerrar-manual">Cerrar</button>
+    </div>
+    <div class="manual__cuerpo">
+      <nav id="lista-manual" class="manual__temas" aria-label="Temas del manual"></nav>
+      <article id="contenido-manual" class="manual__contenido" tabindex="0" aria-live="polite"></article>
+    </div>
   </div>
 </div>
 

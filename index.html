@@ -42,10 +42,13 @@
 <main class="contenedor">
 
   <!-- ===== PANTALLA 1: BIENVENIDA ===== -->
-  <section id="pantalla-inicio" class="pantalla" aria-labelledby="t-inicio">
+   <section id="pantalla-inicio" class="pantalla" aria-labelledby="t-inicio">
+
+    <!-- Tarjeta 1: Crear nuevo grafo -->
     <article class="card">
-      <h2 id="t-inicio" class="card__titulo">Cantidad de nodos</h2>
-      <p class="card__texto">El grafo dirigido tendrá n nodos, con n ∈ [4, 12]. Se numeran 1, 2, 3…</p>
+      <h2 id="t-inicio" class="card__titulo">Crear nuevo grafo</h2>
+      <p class="card__texto">Elige cuántos nodos tendrá el grafo dirigido, con n ∈ [4, 12], y cómo quieres construirlo. Los nodos se numeran 1, 2, 3… (después puedes cambiar sus nombres).</p>
+
       <div class="selector-n">
         <button type="button" class="btn-circular" id="btn-menos" aria-label="Disminuir nodos">−</button>
         <label class="selector-n__valor">
@@ -58,12 +61,9 @@
       <div class="rango-marcas" aria-hidden="true">
         <span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span>
       </div>
-    </article>
 
-    <article class="card">
-      <h2 class="card__titulo">¿Cómo quieres construir el grafo?</h2>
-      <p class="card__texto">Genera las conexiones al azar, defínelas a mano o recupera un grafo existente.</p>
-      <div class="opciones">
+      <h3 class="card__subtitulo" style="margin-top:1.5rem">¿Cómo quieres construir el grafo?</h3>
+      <div class="opciones" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-top:.5rem">
         <button type="button" class="opcion" id="btn-aleatorio">
           <svg class="icono" aria-hidden="true"><use href="#i-dado"/></svg>
           <span class="opcion__titulo">Aleatorio</span>
@@ -74,10 +74,18 @@
           <span class="opcion__titulo">Manual</span>
           <span class="opcion__texto">Tú defines cada conexión</span>
         </button>
+      </div>
+    </article>
+
+    <!-- Tarjeta 2: Cargar grafo existente -->
+    <article class="card">
+      <h2 class="card__titulo">Cargar grafo existente</h2>
+      <p class="card__texto">Recupera un grafo desde un código QR o abre uno de tus ejercicios guardados.</p>
+      <div class="opciones" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
         <button type="button" class="opcion" id="btn-qr">
           <svg class="icono" aria-hidden="true"><use href="#i-qr"/></svg>
           <span class="opcion__titulo">Cargar QR</span>
-          <span class="opcion__texto">Escanea o sube un código</span>
+          <span class="opcion__texto">Sube una imagen con el código</span>
         </button>
         <button type="button" class="opcion" id="btn-guardados">
           <svg class="icono" aria-hidden="true"><use href="#i-carpeta"/></svg>

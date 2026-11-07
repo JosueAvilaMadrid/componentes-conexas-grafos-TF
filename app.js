@@ -1277,6 +1277,262 @@ function descargarQR() {
   enlace.remove();
 }
 
+
+/* ============ MANUAL DE USUARIO ============ */
+const CONTENIDO_MANUAL = [
+  {
+    titulo: "1. Inicio rápido",
+    html: `
+      <h3>¿Para qué sirve esta aplicación?</h3>
+      <p>Calcula las componentes conexas de un grafo dirigido con el procedimiento matricial de la clase (matriz de adyacencia, matriz de caminos, orden de filas y columnas, bloques de 1's) y te muestra cada paso.</p>
+      <h3>Pasos básicos</h3>
+      <ol>
+        <li>En la pantalla de inicio elige la cantidad de nodos (de 4 a 12) y presiona <strong>Aleatorio</strong> o <strong>Manual</strong>. También puedes usar <strong>Cargar QR</strong> o <strong>Ejercicios guardados</strong>.</li>
+        <li>En la pantalla de edición revisa la matriz y el grafo. Puedes cambiar los 1 y 0 de la matriz o dibujar y quitar flechas sobre el grafo.</li>
+        <li>Presiona <strong>Ejecutar algoritmo →</strong> para ver el procedimiento paso a paso.</li>
+        <li>Avanza con <strong>Siguiente</strong> hasta la última etapa: la solución, con el número de componentes, los nodos de cada una y el grafo coloreado.</li>
+        <li>Presiona <strong>Descargar informe en PDF</strong> para guardar la solución completa.</li>
+        <li>Con <strong>Guardar ejercicio</strong> lo conservas para después y con <strong>Compartir QR</strong> se lo envías a otra persona.</li>
+      </ol>
+      <h3>Las tres etapas</h3>
+      <p>La barra de progreso de arriba indica dónde estás: Inicio, Edición o Resultados.</p>`,
+  },
+  {
+    titulo: "2. Pantalla de bienvenida",
+    html: `
+      <h3>Cantidad de nodos</h3>
+      <p>Se elige con los botones − y +, con el deslizador o escribiendo el número. Debe estar entre 4 y 12; si escribes otro valor, se ajusta solo al límite más cercano. Los nodos se numeran 1, 2, 3… (después puedes cambiar sus nombres).</p>
+      <h3>Crear nuevo grafo</h3>
+      <ul>
+        <li><strong>Aleatorio:</strong> el programa crea conexiones al azar entre los nodos.</li>
+        <li><strong>Manual:</strong> empiezas con la matriz vacía y tú pones las conexiones.</li>
+      </ul>
+      <p>Los dos botones abren directamente la pantalla de edición.</p>
+      <h3>Cargar grafo existente</h3>
+      <ul>
+        <li><strong>Cargar QR:</strong> lee una imagen PNG o JPG con el código QR de un ejercicio y lo carga automáticamente.</li>
+        <li><strong>Ejercicios guardados:</strong> abre la lista de ejercicios que guardaste antes para cargar uno directamente.</li>
+      </ul>
+      <h3>Manual de usuario</h3>
+      <p>El botón de la esquina superior derecha abre esta ayuda desde cualquier pantalla.</p>`,
+  },
+  {
+    titulo: "3. Pantalla de la matriz",
+    html: `
+      <h3>La tabla</h3>
+      <p>Es la matriz de adyacencia. La <strong>fila es el ORIGEN</strong> y la <strong>columna es el DESTINO</strong>. Un 1 (verde) en la fila A y la columna B significa que hay una flecha de A hacia B. El grafo es dirigido: A→B no significa que exista B→A. La diagonal siempre vale 0.</p>
+      <h3>El grafo</h3>
+      <p>A la derecha de la matriz se ve el grafo, con todos los nodos del mismo color (así no se adelanta el resultado). Se actualiza solo cada vez que cambias la matriz y respeta la posición que le des a cada nodo.</p>
+      <h3>Herramientas del grafo</h3>
+      <ul>
+        <li><strong>Mover nodos:</strong> arrastra un nodo para acomodarlo.</li>
+        <li><strong>Añadir arista:</strong> arrastra desde el nodo origen hasta el nodo destino.</li>
+        <li><strong>Quitar arista:</strong> arrastra desde el origen hasta el destino de la flecha que quieres borrar.</li>
+      </ul>
+      <h3>Botones</h3>
+      <ul>
+        <li><strong>Aleatorio:</strong> genera otra matriz aleatoria con los mismos nodos, conservando posiciones y nombres.</li>
+        <li><strong>Limpiar:</strong> quita todas las conexiones y deja la matriz en ceros.</li>
+        <li><strong>Editar arista manual:</strong> agrega o quita una conexión eligiéndola en listas.</li>
+        <li><strong>Nombrar nodos:</strong> cambia los nombres de los nodos.</li>
+        <li><strong>Guardar ejercicio</strong> y <strong>Compartir QR</strong>.</li>
+        <li><strong>← Volver:</strong> regresa a la pantalla de inicio. El grafo actual se reemplaza cuando crees uno nuevo, así que guárdalo antes si quieres conservarlo.</li>
+        <li><strong>Ejecutar algoritmo →:</strong> abre el procedimiento paso a paso.</li>
+      </ul>
+      <h3>Análisis de nodo</h3>
+      <p>Debajo de la matriz, elige un nodo en la lista y presiona <strong>Analizar</strong>: muestra a qué nodos llega directamente (por ejemplo A->B, A->C) o "Ninguna" si no tiene salidas.</p>`,
+  },
+  {
+    titulo: "4. Compartir por Código QR",
+    html: `
+      <h3>Intercambio de ejercicios sin servidor</h3>
+      <p>Esta función te permite pasar un ejercicio completo a otra persona como una imagen. El grafo no se envía a ningún servidor: queda dentro del código QR.</p>
+      <h3>Generar y enviar un QR</h3>
+      <ol>
+        <li>Presiona <strong>Compartir QR</strong> en la pantalla de edición.</li>
+        <li>En la ventana que aparece, presiona <strong>Descargar QR (.png)</strong> y guarda la imagen.</li>
+        <li>Envía la imagen a un compañero por mensaje, correo o red social.</li>
+      </ol>
+      <h3>Cargar un ejercicio desde un QR</h3>
+      <ol>
+        <li>En la pantalla de inicio, presiona <strong>Cargar QR</strong>.</li>
+        <li>Selecciona la imagen PNG o JPG que te enviaron.</li>
+        <li>El programa lee el código y carga la matriz, los nombres de los nodos y sus posiciones, y abre la pantalla de edición.</li>
+      </ol>
+      <h3>Consejos</h3>
+      <p>Usa una imagen nítida y completa, con borde blanco alrededor del código. Si aparece un aviso de que el código no pertenece a la aplicación, revisa que sea el QR de un ejercicio.</p>`,
+  },
+  {
+    titulo: "5. Editar matriz y gráfico",
+    html: `
+      <p>Hay tres formas de modificar el grafo, y todas se aplican al instante (no hay botón Aceptar ni Cancelar).</p>
+      <h3>1. Clic en la matriz</h3>
+      <p>Haz clic en cualquier celda para cambiar 0 por 1 o 1 por 0. Las celdas de la diagonal no se pueden editar.</p>
+      <h3>2. Editar arista manual</h3>
+      <p>Elige el <strong>Origen</strong> y el <strong>Destino</strong> en las listas y presiona <strong>Agregar</strong> o <strong>Quitar</strong>. Si la conexión ya existe (o no existe), el programa avisa. Agregar y Quitar no cierran la ventana, así puedes editar varias aristas seguidas; usa <strong>Cerrar</strong> al terminar.</p>
+      <p>No se puede unir un nodo consigo mismo: la diagonal de la matriz de adyacencia siempre vale 0.</p>
+      <h3>3. Dibujar sobre el grafo</h3>
+      <ul>
+        <li><strong>Añadir arista:</strong> arrastra con el mouse (o el dedo) desde el nodo origen hasta el nodo destino. Mientras arrastras se muestra una flecha de guía.</li>
+        <li><strong>Quitar arista:</strong> arrastra desde el origen hasta el destino de la flecha que quieres borrar.</li>
+        <li><strong>Mover nodos:</strong> arrastra un nodo para formar la figura que prefieras. Las posiciones se conservan al guardar el ejercicio, compartirlo por QR y en el resultado final.</li>
+      </ul>
+      <p>Mientras editas, los nodos no cambian de color: las componentes se muestran recién al final.</p>`,
+  },
+  {
+    titulo: "6. Nombrar nodos",
+    html: `
+      <h3>Un solo estilo para todos</h3>
+      <p>Primero eliges UN estilo que se aplica a todos los nodos:</p>
+      <ul>
+        <li><strong>Números:</strong> del 1 al 999.</li>
+        <li><strong>Letras:</strong> mayúsculas o minúsculas (la opción "Letras en" decide cuál; no se pueden mezclar).</li>
+        <li><strong>Prefijo + número:</strong> una letra de prefijo igual para todos y un número del 1 al 99 por nodo (por ejemplo Q1, Q2, Q3).</li>
+      </ul>
+      <h3>Cómo escribir</h3>
+      <ul>
+        <li>Números: solo acepta dígitos (máximo 3 y sin cero al inicio).</li>
+        <li>Letras: solo acepta una letra. Si escribes "v" y está en Mayúsculas, se convierte en "V".</li>
+        <li>Prefijo + número: escribes la letra del prefijo (si pones "q" minúscula, todos quedan con q) y el número de cada nodo.</li>
+      </ul>
+      <h3>Regla de los dígitos</h3>
+      <p>Si algún número del prefijo es 10 o más, todos quedan con 2 dígitos para que haya orden: Q01, Q02, …, Q12. Si ninguno llega a 10, quedan Q1, Q2, Q3…</p>
+      <h3>Botones</h3>
+      <ul>
+        <li><strong>Por defecto:</strong> deja nombres consecutivos (A, B, C… / 1, 2, 3… / Q1, Q2…).</li>
+        <li><strong>Rellenar:</strong> completa los demás nodos a partir del primero (si el primero es 10 quedan 10, 11, 12…; si es "c" quedan c, d, e…). Si ya no alcanzan los valores (por ejemplo empezando en Z), avisa.</li>
+        <li><strong>Aceptar:</strong> valida que no haya campos vacíos ni nombres repetidos y aplica los nombres.</li>
+        <li><strong>Cancelar:</strong> cierra sin cambiar nada.</li>
+      </ul>
+      <p>Los nombres se usan en todo el programa: matriz, análisis, gráficos, pasos, resultado e informe.</p>`,
+  },
+  {
+    titulo: "7. Graficar componentes conexas",
+    html: `
+      <p>El grafo original se ve siempre junto a la matriz. El resultado final aparece en la <strong>última etapa</strong> del procedimiento (la solución): el mismo grafo, con la posición que le diste a cada nodo, pero ahora cada nodo se pinta del color de su componente.</p>
+      <p>Los nodos de una misma componente comparten color, y a su lado se lista cada componente con sus nodos (V1, V2, …). Las flechas entre componentes distintas también se dibujan, para que se vea cómo se conectan.</p>
+      <p>Si quieres acomodar mejor los nodos, usa <strong>← Volver a Edición</strong>, muévelos y ejecuta de nuevo.</p>`,
+  },
+  {
+    titulo: "8. Procedimiento paso a paso",
+    html: `
+      <p>Se abre con <strong>Ejecutar algoritmo →</strong>. Muestra cómo cambia la matriz en cada etapa; arriba se indica "Etapa X de Y" con una barra de progreso.</p>
+      <h3>Etapas</h3>
+      <ol>
+        <li><strong>Paso 1:</strong> matriz de adyacencia con 1's en la diagonal (los 1's agregados se ven en azul).</li>
+        <li><strong>Paso 2:</strong> se multiplica la matriz por sí misma (producto booleano) y se obtiene M², luego M³, y así hasta que ya no aparezcan 1's nuevos. Los 1's nuevos salen en naranja y debajo se explica por qué nodo se pasa (por ejemplo 4→2 (por 1)).</li>
+        <li><strong>Matriz de caminos:</strong> es el resultado del Paso 2, con la lista de nodos a los que llega cada nodo.</li>
+        <li><strong>Paso 3:</strong> se ordenan las filas por la cantidad de 1's, de mayor a menor. Si hay empate, va primero la fila cuyo primer 1 está más cerca de la primera columna.</li>
+        <li><strong>Paso 4:</strong> se ordenan las columnas igual que las filas. Los bloques cuadrados de 1's marcados con borde azul marino son las componentes conexas.</li>
+        <li><strong>Resultado:</strong> el número de componentes, la lista de nodos de cada una y el grafo coloreado.</li>
+      </ol>
+      <h3>Botones</h3>
+      <ul>
+        <li><strong>Anterior / Siguiente:</strong> retroceder o avanzar una etapa.</li>
+        <li><strong>Reproducir:</strong> avanza sola de etapa en etapa y se detiene en el resultado. Se convierte en Pausar. Si la presionas al final, vuelve a empezar.</li>
+        <li><strong>Velocidad:</strong> Lenta, Normal o Rápida.</li>
+        <li><strong>← Volver a Edición:</strong> regresa a corregir el grafo sin perder tus datos.</li>
+      </ul>
+      <p>Si usas Anterior o Siguiente mientras se reproduce, la reproducción se pausa.</p>
+      <h3>Colores</h3>
+      <p>Verde = 1, blanco = 0, naranja = 1 nuevo, azul = 1 agregado en la diagonal, borde azul marino = bloque de una componente.</p>`,
+  },
+  {
+    titulo: "9. Informe en PDF",
+    html: `
+      <p>En la pantalla del resultado, el botón <strong>Descargar informe en PDF</strong> arma el informe completo y lo descarga en formato A4 con el nombre <em>informe_componentes_(n)nodos.pdf</em>. El informe incluye siempre todas las etapas, sin importar cuál estés viendo.</p>
+      <h3>Contenido del informe</h3>
+      <ol>
+        <li>Título, cantidad de nodos y fecha.</li>
+        <li>La matriz de adyacencia.</li>
+        <li>Paso 1: la matriz con la diagonal de 1's.</li>
+        <li>Paso 2: cada potencia (M², M³…) con sus 1's nuevos y la matriz de caminos.</li>
+        <li>Paso 3: las filas ordenadas.</li>
+        <li>Paso 4: las columnas ordenadas con los bloques marcados.</li>
+        <li>Resultado: el número de componentes conexas, la lista de nodos de cada una y el grafo coloreado.</li>
+      </ol>
+      <h3>Si no se descarga</h3>
+      <p>Revisa tu conexión a internet (la herramienta que arma el PDF se carga desde la web) y que el navegador no esté bloqueando descargas.</p>`,
+  },
+  {
+    titulo: "10. Ejercicios guardados",
+    html: `
+      <h3>Guardar</h3>
+      <p><strong>Guardar ejercicio</strong> te pide un nombre y guarda el grafo (la matriz, los nombres y la posición de los nodos). Si ya existe un ejercicio con ese nombre, pregunta si quieres reemplazarlo.</p>
+      <p>Los ejercicios se guardan en tu navegador, en este dispositivo. No viajan a otros dispositivos ni a otros navegadores, y se pierden si borras los datos del sitio.</p>
+      <h3>Ver, cargar y eliminar</h3>
+      <p><strong>Ejercicios guardados</strong> (en la pantalla de inicio) muestra la lista con nombre, cantidad de nodos y fecha, del más nuevo al más antiguo.</p>
+      <ul>
+        <li><strong>Cargar:</strong> abre el ejercicio en la pantalla de edición (reemplaza el grafo actual).</li>
+        <li><strong>Eliminar:</strong> lo borra de la lista, después de pedir confirmación.</li>
+      </ul>
+      <h3>Pasar un ejercicio a otro dispositivo</h3>
+      <p>Usa <strong>Compartir QR</strong> y envía la imagen; la otra persona la abre con <strong>Cargar QR</strong>.</p>`,
+  },
+  {
+    titulo: "11. Conceptos del tema",
+    html: `
+      <h3>Grafo dirigido</h3>
+      <p>Es un conjunto de nodos unidos por flechas. Cada flecha va de un nodo origen a un nodo destino.</p>
+      <h3>Grafo conexo</h3>
+      <p>Un grafo es conexo si para cualquier par de vértices existe un camino entre ellos.</p>
+      <h3>Componentes conexas</h3>
+      <p>Son los subgrafos conexos disjuntos (sin vértices en común) con el mayor número de vértices que se pueden formar a partir del grafo original.</p>
+      <h3>Matriz de adyacencia</h3>
+      <p>Tiene un 1 en la fila i y la columna j si existe la arista de i hacia j, y 0 si no existe.</p>
+      <h3>Matriz de caminos</h3>
+      <p>Indica si desde un nodo se puede llegar a otro siguiendo las flechas, sin importar cuántos pasos tome. Se obtiene multiplicando la matriz de adyacencia por sí misma hasta que ya no cambia.</p>
+      <h3>¿Por qué se pone 1 en la diagonal?</h3>
+      <p>Porque todo nodo llega a sí mismo. Además, así cada potencia incluye los caminos más cortos y la matriz crece ordenadamente hasta estabilizarse.</p>
+      <h3>¿Cómo se forman las componentes?</h3>
+      <p>Dos nodos están en la misma componente si se alcanzan mutuamente (de uno al otro y de vuelta). Al ordenar filas y columnas, esos nodos forman bloques cuadrados diagonales de 1's.</p>`,
+  },
+  {
+    titulo: "12. Preguntas frecuentes",
+    html: `
+      <h3>Edité con «Editar arista manual» pero no cambió nada</h3>
+      <p>Esa ventana aplica los cambios al presionar <strong>Agregar</strong> o <strong>Quitar</strong>; cerrarla sin presionarlos no modifica nada.</p>
+      <h3>No me deja guardar los nombres de los nodos</h3>
+      <p>Revisa que no haya campos vacíos ni nombres repetidos. Los nombres tienen como máximo 3 caracteres.</p>
+      <h3>¿Dónde quedan mis ejercicios?</h3>
+      <p>En el almacenamiento de tu navegador, en este dispositivo. Se ven en el botón <strong>Ejercicios guardados</strong>.</p>
+      <h3>¿Cómo transfiero mi ejercicio a un amigo?</h3>
+      <p>Usa <strong>Compartir QR</strong>, guarda la imagen con <strong>Descargar QR (.png)</strong> y envíasela. Tu amigo solo debe presionar <strong>Cargar QR</strong> en su aplicación.</p>
+      <h3>El QR no se lee</h3>
+      <p>Usa una imagen nítida y completa, con borde blanco alrededor del código.</p>
+      <h3>No se genera el QR, no se lee o no se descarga el PDF</h3>
+      <p>Esas funciones usan herramientas que se cargan desde internet al abrir la página. Revisa tu conexión y recarga la página.</p>
+      <h3>¿Por qué no puedo conectar un nodo consigo mismo?</h3>
+      <p>La diagonal de la matriz de adyacencia siempre vale 0. No afecta las componentes: en el procedimiento se agrega un 1 en la diagonal de todos modos.</p>`,
+  },
+];
+ 
+function construirListaManual() {
+  $("lista-manual").replaceChildren(...CONTENIDO_MANUAL.map((tema, i) => {
+    const boton = crearElemento("button", { type: "button", className: "manual__tema", texto: tema.titulo });
+    boton.addEventListener("click", () => mostrarTemaManual(i));
+    return boton;
+  }));
+}
+ 
+/** Muestra un tema en #contenido-manual y marca el tema activo de la lista. */
+function mostrarTemaManual(indice) {
+  const tema = CONTENIDO_MANUAL[indice];
+  if (!tema) return;
+  const contenido = $("contenido-manual");
+  contenido.innerHTML = `<h2>${tema.titulo}</h2>${tema.html}`;     // contenido propio y fijo (no viene del usuario)
+  contenido.scrollTop = 0;
+  [...$("lista-manual").children].forEach((boton, i) => boton.setAttribute("aria-current", String(i === indice)));
+}
+ 
+/** Abre el manual siempre en el primer tema. */
+function abrirModalManual() {
+  construirListaManual();
+  mostrarTemaManual(0);
+  abrirModal("modal-manual");
+  $("lista-manual").children[0].focus();
+}
+
 /* ============ CONEXIÓN DE EVENTOS ============ */
 function inicializarAvanzadas() {
   // El modal de QR solo admite imagen (no cámara): se ajusta el texto del HTML
@@ -1304,6 +1560,10 @@ function inicializarAvanzadas() {
 
   // PDF
   $("btn-pdf").addEventListener("click", descargarPDF);
+
+  // Manual de usuario
+  $("btn-manual-uso").addEventListener("click", abrirModalManual);
+  $("btn-cerrar-manual").addEventListener("click", () => cerrarModal("modal-manual"));
 
   // Cierre de modales: clic en el fondo y tecla Escape
   ["modal-qr", "modal-guardados"].forEach((id) => {

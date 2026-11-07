@@ -14,6 +14,12 @@ let matriz = [];
 let etiquetas = [];
 let posiciones = null;
 
+// Modo edición in-place: respaldo del grafo mientras se edita (ver sección "MODO EDICIÓN" al final)
+let matriz_backup = null;
+let etiquetas_backup = null;
+let posiciones_backup = null;
+let modoEdicionActivo = false;
+
 /* ============ UTILIDADES ============ */
 const copiarMatriz = (M) => M.map((fila) => fila.slice());
 
@@ -279,9 +285,9 @@ function mostrarPantallaInicio() {
 
 function mostrarPantallaEdicion() {
   mostrarPantalla(2);
-  actualizarTextoModo();
-  renderizarMatriz();
-  dibujarGrafo();
+  modoEdicionActivo = false;       // la pantalla siempre se abre con el grafo bloqueado
+  matriz_backup = etiquetas_backup = posiciones_backup = null;
+  aplicarEstadoEdicion();          // actualiza texto, botones, matriz y grafo
 }
 
 function mostrarPantallaPasos() {
@@ -296,10 +302,11 @@ const AYUDA_HERRAMIENTA = {
 };
 
 function actualizarTextoModo() {
-  const base = modoConstruccion === "aleatorio"
-    ? "Grafo aleatorio generado. Puedes alternar celdas de la matriz."
-    : "Modo manual: haz clic en las celdas de la matriz para crear o quitar aristas (fila → columna).";
-  $("texto-modo").textContent = `${base} ${AYUDA_HERRAMIENTA[lienzo.dataset.modo] || ""}`.trim();
+  const base = modoConstruccion === "aleatorio" ? "Grafo aleatorio generado." : "Modo manual: la matriz empieza vacía.";
+  const ayuda = modoEdicionActivo
+    ? `Modo edición: haz clic en las celdas de la matriz (fila → columna). ${AYUDA_HERRAMIENTA[lienzo.dataset.modo] || ""} Aceptar conserva los cambios y Cancelar los descarta.`
+    : "Presiona «Editar Matriz y Gráfico» para modificar las conexiones.";
+  $("texto-modo").textContent = `${base} ${ayuda}`.trim();
 }
 
 /* ============ 2. MATRIZ DE ADYACENCIA ============ */
@@ -361,8 +368,8 @@ function crearMatrizDOM(M, etqFilas, etqColumnas, opciones = {}) {
 
 /** Lee n, matriz y etiquetas y dibuja la tabla editable dentro de #contenedor-matriz. */
 function renderizarMatriz() {
-  $("contenedor-matriz").replaceChildren(crearMatrizDOM(matriz, etiquetas, etiquetas, { editable: true }));
-  actualizarSelectAnalisis();
+  $("contenedor-matriz").replaceChildren(crearMatrizDOM(matriz, etiquetas, etiquetas, { editable: modoEdicionActivo }));
+  actualizarSelectAnalisis();      // el selector de análisis siempre refleja los nodos y nombres actuales
 }
 
 /** Alterna 0/1 de una celda (no diagonal) y actualiza tabla y lienzo. */
@@ -378,6 +385,7 @@ function alternarArista(i, j, conTeclado = false) {
 }
 
 function alActivarCelda(e) {
+  if (!modoEdicionActivo) return;
   const celda = e.target.closest(".celda--editable");
   if (!celda) return;
   if (e.type === "keydown") {
@@ -554,6 +562,7 @@ function nodoEn(x, y) {
 }
 
 function alPresionar(e) {
+  if (!modoEdicionActivo) return;
   if (e.cancelable && e.type === "touchstart") e.preventDefault();
   const [x, y] = puntoDelEvento(e);
   const i = nodoEn(x, y);
@@ -575,6 +584,7 @@ function alPresionar(e) {
 }
 
 function alMover(e) {
+  if (!modoEdicionActivo) return;      // bloqueado: sin arrastre ni resaltado de nodos
   const [x, y] = puntoDelEvento(e);
 
   if (nodoOrigen !== null) {
@@ -737,6 +747,7 @@ function inicializarApp() {
     mostrarPantallaPasos();
   });
   ["btn-volver-inicio", "btn-nuevo"].forEach((id) => $(id).addEventListener("click", mostrarPantallaInicio));
+
   inicializarHerramientas();
 }
 
@@ -751,7 +762,7 @@ inicializarApp();
 /* ============ UTILIDADES ============ */
 const CLAVE_EJERCICIOS = "componentesConexas.ejercicios.v1";
 const URL_QRCODEJS = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir"];
+const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual"];
 const PALETA_COMPONENTES = [
   "#CFE8FA", "#B3E6B3", "#FFD9A0", "#E3D4F5", "#FAD1D8", "#CDEDEA",
   "#F3EEB0", "#D9DEE6", "#F6C9A8", "#C5D5F7", "#E6F0B8", "#F2C6E6",
@@ -1277,7 +1288,6 @@ function descargarQR() {
   enlace.remove();
 }
 
-
 /* ============ MANUAL DE USUARIO ============ */
 const CONTENIDO_MANUAL = [
   {
@@ -1506,7 +1516,7 @@ const CONTENIDO_MANUAL = [
       <p>La diagonal de la matriz de adyacencia siempre vale 0. No afecta las componentes: en el procedimiento se agrega un 1 en la diagonal de todos modos.</p>`,
   },
 ];
- 
+
 function construirListaManual() {
   $("lista-manual").replaceChildren(...CONTENIDO_MANUAL.map((tema, i) => {
     const boton = crearElemento("button", { type: "button", className: "manual__tema", texto: tema.titulo });
@@ -1514,7 +1524,7 @@ function construirListaManual() {
     return boton;
   }));
 }
- 
+
 /** Muestra un tema en #contenido-manual y marca el tema activo de la lista. */
 function mostrarTemaManual(indice) {
   const tema = CONTENIDO_MANUAL[indice];
@@ -1524,7 +1534,7 @@ function mostrarTemaManual(indice) {
   contenido.scrollTop = 0;
   [...$("lista-manual").children].forEach((boton, i) => boton.setAttribute("aria-current", String(i === indice)));
 }
- 
+
 /** Abre el manual siempre en el primer tema. */
 function abrirModalManual() {
   construirListaManual();
@@ -1566,7 +1576,7 @@ function inicializarAvanzadas() {
   $("btn-cerrar-manual").addEventListener("click", () => cerrarModal("modal-manual"));
 
   // Cierre de modales: clic en el fondo y tecla Escape
-  ["modal-qr", "modal-guardados"].forEach((id) => {
+  ["modal-qr", "modal-guardados", "modal-manual"].forEach((id) => {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) cerrarModal(id); });
   });
   document.addEventListener("keydown", (e) => {
@@ -1790,13 +1800,13 @@ inicializarPasos();
    NOMBRAR NODOS · modal para elegir un estilo de nombres para todos los nodos
    Estilos: Números (1–999), Letras (A–Z / a–z) y Prefijo + número (Q1…Q99).
    ========================================================================== */
- 
+
 IDS_MODALES.push("modal-nombres");     // para que Escape también cierre este modal
- 
+
 /* ============ NOMBRES_LOGICA_INICIO · funciones puras (sin DOM) ============ */
 const ultimaLetra = (texto) => (texto.match(/[A-Za-z]/g) || []).pop() || "";
 const soloDigitos = (texto, maximo) => texto.replace(/\D/g, "").replace(/^0+/, "").slice(0, maximo);
- 
+
 /** Deja en un campo solo lo permitido por el estilo: una letra, o dígitos sin ceros a la izquierda. */
 function filtrarValorNodo(texto, estilo, mayusculas) {
   if (estilo === "letras") {
@@ -1805,18 +1815,18 @@ function filtrarValorNodo(texto, estilo, mayusculas) {
   }
   return soloDigitos(texto, estilo === "numeros" ? 3 : 2);
 }
- 
+
 /** Valor consecutivo por posición: A, B, C… / a, b, c… / 1, 2, 3… */
 function valorPorDefectoNodo(posicion, estilo, mayusculas) {
   if (estilo === "letras") return String.fromCharCode((mayusculas ? 65 : 97) + posicion);
   return String(posicion + 1);
 }
- 
+
 /** "Rellenar": completa los nodos de forma consecutiva a partir del valor del nodo 1. */
 function calcularRelleno(estilo, mayusculas, primero, cantidad) {
   const texto = primero.trim();
   if (!texto) return { error: "Escribe primero el valor del nodo 1." };
- 
+
   if (estilo === "letras") {
     if (!/^[A-Za-z]$/.test(texto)) return { error: "El nodo 1 debe ser una letra." };
     const inicio = (mayusculas ? texto.toUpperCase() : texto.toLowerCase()).charCodeAt(0);
@@ -1829,7 +1839,7 @@ function calcularRelleno(estilo, mayusculas, primero, cantidad) {
     }
     return { valores: Array.from({ length: cantidad }, (_, i) => String.fromCharCode(inicio + i)) };
   }
- 
+
   const inicio = parseInt(texto, 10);
   const maximo = estilo === "numeros" ? 999 : 99;
   if (inicio + cantidad - 1 > maximo) {
@@ -1840,15 +1850,15 @@ function calcularRelleno(estilo, mayusculas, primero, cantidad) {
   }
   return { valores: Array.from({ length: cantidad }, (_, i) => String(inicio + i)) };
 }
- 
+
 /** "Aceptar": valida los campos y devuelve { nombres } o { error }. Rechaza nombres repetidos. */
 function construirNombres(estilo, mayusculas, prefijo, valores) {
   if (estilo === "prefijo" && !prefijo) return { error: "Escribe la letra del prefijo." };
- 
+
   const limpios = valores.map((v) => v.trim());
   const vacio = limpios.findIndex((v) => v === "");
   if (vacio >= 0) return { error: `El nodo ${vacio + 1} no tiene valor.` };
- 
+
   let nombres;
   if (estilo === "letras") {
     nombres = limpios.map((v) => (mayusculas ? v.toUpperCase() : v.toLowerCase()));
@@ -1859,7 +1869,7 @@ function construirNombres(estilo, mayusculas, prefijo, valores) {
     const digitos = Math.max(...numeros) >= 10 ? 2 : 1;      // si alguno es 10 o más, todos con 2 dígitos (Q01…Q12)
     nombres = numeros.map((x) => prefijo + String(x).padStart(digitos, "0"));
   }
- 
+
   const vistos = new Map();
   for (let i = 0; i < nombres.length; i++) {
     if (vistos.has(nombres[i])) {
@@ -1869,19 +1879,19 @@ function construirNombres(estilo, mayusculas, prefijo, valores) {
   }
   return { nombres };
 }
- 
+
 /** Detecta el estilo de los nombres actuales para abrir el modal con ese estilo. null = estilo mixto. */
 function detectarEstiloNombres(actuales) {
   if (actuales.every((x) => /^[A-Z]$/.test(x))) return { estilo: "letras", caso: "mayusculas" };
   if (actuales.every((x) => /^[a-z]$/.test(x))) return { estilo: "letras", caso: "minusculas" };
   if (actuales.every((x) => /^\d+$/.test(x) && +x >= 1 && +x <= 999)) return { estilo: "numeros" };
- 
+
   const prefijos = actuales.map((x) => (/^[A-Za-z]\d+$/.test(x) && +x.slice(1) >= 1 && +x.slice(1) <= 99 ? x[0] : null));
   if (prefijos.every((p) => p !== null) && new Set(prefijos).size === 1) return { estilo: "prefijo", prefijo: prefijos[0] };
   return null;
 }
 /* ============ NOMBRES_LOGICA_FIN ============ */
- 
+
 /* ============ INTERFAZ DEL MODAL ============ */
 const AYUDA_NOMBRES = {
   numeros: "Escribe un número del 1 al 999 en cada nodo.",
@@ -1889,17 +1899,17 @@ const AYUDA_NOMBRES = {
   prefijo: "Escribe la letra del prefijo y un número del 1 al 99 en cada nodo. " +
     "Si algún número es 10 o más, todos quedan con 2 dígitos (Q01, Q02… Q12).",
 };
- 
+
 const estiloNombres = () => $("select-estilo-nombres").value;
 const mayusculasNombres = () => $("select-caso-nombres").value === "mayusculas";
 const camposNombres = () => [...$("grilla-nombres").querySelectorAll("input")];
- 
+
 function mostrarErrorNombres(mensaje) {
   const caja = $("error-nombres");
   caja.textContent = mensaje || "";
   caja.classList.toggle("oculto", !mensaje);
 }
- 
+
 /** Un <input> por cada nodo actual (n). */
 function construirGrillaNombres() {
   $("grilla-nombres").replaceChildren(...Array.from({ length: n }, (_, i) => crearElemento("label", { className: "campo-nodo" },
@@ -1909,19 +1919,19 @@ function construirGrillaNombres() {
       type: "text", className: "campo-nodo__input", autocomplete: "off", spellcheck: "false", "aria-label": `Nombre del nodo ${i + 1}`,
     }))));
 }
- 
+
 /** Muestra u oculta las opciones según el estilo: "Letras en" solo con Letras, prefijo solo con Prefijo + número. */
 function actualizarOpcionesNombres() {
   const estilo = estiloNombres();
   $("campo-caso-nombres").classList.toggle("oculto", estilo !== "letras");
   $("campo-prefijo-nombres").classList.toggle("oculto", estilo !== "prefijo");
   $("ayuda-nombres").textContent = `${AYUDA_NOMBRES[estilo]} Con «Rellenar» se completan los demás nodos a partir del primero.`;
- 
+
   const prefijo = estilo === "prefijo" ? $("input-prefijo-nombres").value : "";
   $("grilla-nombres").querySelectorAll(".campo-nodo__prefijo").forEach((s) => { s.textContent = prefijo; });
   camposNombres().forEach((campo) => campo.setAttribute("inputmode", estilo === "letras" ? "text" : "numeric"));
 }
- 
+
 /** "Por defecto": nombres consecutivos del estilo elegido (A, B, C… o 1, 2, 3…). */
 function aplicarPorDefectoNombres() {
   const estilo = estiloNombres();
@@ -1930,7 +1940,7 @@ function aplicarPorDefectoNombres() {
   actualizarOpcionesNombres();
   mostrarErrorNombres("");
 }
- 
+
 function rellenarNombres() {
   const campos = camposNombres();
   const resultado = calcularRelleno(estiloNombres(), mayusculasNombres(), campos[0].value, n);
@@ -1938,26 +1948,26 @@ function rellenarNombres() {
   campos.forEach((campo, i) => { campo.value = resultado.valores[i]; });
   mostrarErrorNombres("");
 }
- 
+
 function aceptarNombres() {
   const resultado = construirNombres(estiloNombres(), mayusculasNombres(), $("input-prefijo-nombres").value, camposNombres().map((c) => c.value));
   if (resultado.error) return mostrarErrorNombres(resultado.error);
- 
+
   etiquetas = resultado.nombres;
   cerrarModal("modal-nombres");
   renderizarMatriz();
   dibujarGrafo();
   mostrarToast("Nombres de los nodos actualizados");
 }
- 
+
 function abrirModalNombres() {
   construirGrillaNombres();
   const detectado = detectarEstiloNombres(etiquetas);
- 
+
   $("select-estilo-nombres").value = detectado ? detectado.estilo : "numeros";
   $("select-caso-nombres").value = detectado && detectado.caso ? detectado.caso : "mayusculas";
   $("input-prefijo-nombres").value = detectado && detectado.prefijo ? detectado.prefijo : "Q";
- 
+
   if (detectado) {                     // se conservan los nombres actuales
     camposNombres().forEach((campo, i) => {
       campo.value = detectado.estilo === "prefijo" ? etiquetas[i].slice(1) : etiquetas[i];
@@ -1970,53 +1980,55 @@ function abrirModalNombres() {
   abrirModal("modal-nombres");
   $("select-estilo-nombres").focus();
 }
- 
+
 function inicializarNombres() {
   $("btn-nombrar").addEventListener("click", abrirModalNombres);
- 
+
   // Al cambiar el estilo se reinician los nombres; al cambiar mayúsculas/minúsculas se convierten
   $("select-estilo-nombres").addEventListener("change", aplicarPorDefectoNombres);
   $("select-caso-nombres").addEventListener("change", () => {
     camposNombres().forEach((campo) => { campo.value = filtrarValorNodo(campo.value, "letras", mayusculasNombres()); });
   });
- 
+
   // El prefijo es una sola letra (se respeta q o Q)
   $("input-prefijo-nombres").addEventListener("input", (e) => {
     e.target.value = ultimaLetra(e.target.value);
     actualizarOpcionesNombres();
   });
- 
+
   // Filtro en cada campo de nodo (delegación de eventos); Enter acepta
   $("grilla-nombres").addEventListener("input", (e) => {
     e.target.value = filtrarValorNodo(e.target.value, estiloNombres(), mayusculasNombres());
     mostrarErrorNombres("");
   });
   $("grilla-nombres").addEventListener("keydown", (e) => { if (e.key === "Enter") aceptarNombres(); });
- 
+
   $("btn-nombres-defecto").addEventListener("click", aplicarPorDefectoNombres);
   $("btn-nombres-rellenar").addEventListener("click", rellenarNombres);
   $("btn-nombres-aceptar").addEventListener("click", aceptarNombres);
   $("btn-nombres-cancelar").addEventListener("click", () => cerrarModal("modal-nombres"));
   $("modal-nombres").addEventListener("click", (e) => { if (e.target === $("modal-nombres")) cerrarModal("modal-nombres"); });
 }
- 
+
 inicializarNombres();
+
+
 /* ==========================================================================
    EDITAR ARISTA (MANUAL) · modal con Origen, Destino, Agregar, Quitar y Cerrar
    ========================================================================== */
- 
+
 IDS_MODALES.push("modal-arista");     // para que Escape también cierre este modal
- 
+
 /** Llena un <select> con las etiquetas actuales (valor = índice del nodo). */
 function llenarSelectNodos(select, indiceInicial) {
   select.replaceChildren(...etiquetas.map((nombre, i) => crearElemento("option", { value: String(i), texto: nombre })));
   select.value = String(indiceInicial);
 }
- 
+
 function mostrarMensajeArista(texto) {
   $("mensaje-arista").textContent = texto;
 }
- 
+
 function abrirModalArista() {
   llenarSelectNodos($("select-origen"), 0);
   llenarSelectNodos($("select-destino"), Math.min(1, n - 1));
@@ -2024,7 +2036,7 @@ function abrirModalArista() {
   abrirModal("modal-arista");
   $("select-origen").focus();
 }
- 
+
 /** Origen y destino elegidos, o null (con aviso) si no se puede editar esa arista. */
 function leerParDeArista() {
   const origen = Number($("select-origen").value);
@@ -2035,7 +2047,7 @@ function leerParDeArista() {
   }
   return [origen, destino];
 }
- 
+
 function agregarAristaManual() {
   const par = leerParDeArista();
   if (!par) return;
@@ -2050,7 +2062,7 @@ function agregarAristaManual() {
   mostrarMensajeArista("");
   mostrarToast(`Arista ${etiquetas[o]} → ${etiquetas[d]} agregada`);
 }
- 
+
 function quitarAristaManual() {
   const par = leerParDeArista();
   if (!par) return;
@@ -2065,23 +2077,23 @@ function quitarAristaManual() {
   mostrarMensajeArista("");
   mostrarToast(`Arista ${etiquetas[o]} → ${etiquetas[d]} quitada`);
 }
- 
+
 function inicializarEditarArista() {
-  $("btn-editar-arista").addEventListener("click", abrirModalArista);
+  $("btn-editar-arista-manual").addEventListener("click", abrirModalArista);
   $("btn-arista-agregar").addEventListener("click", agregarAristaManual);     // no cierran el modal
   $("btn-arista-quitar").addEventListener("click", quitarAristaManual);
   $("btn-arista-cerrar").addEventListener("click", () => cerrarModal("modal-arista"));
   ["select-origen", "select-destino"].forEach((id) => $(id).addEventListener("change", () => mostrarMensajeArista("")));
   $("modal-arista").addEventListener("click", (e) => { if (e.target === $("modal-arista")) cerrarModal("modal-arista"); });
 }
- 
+
 inicializarEditarArista();
 
 
 /* ==========================================================================
    ANÁLISIS DE NODO · a qué nodos llega directamente el nodo elegido
    ========================================================================== */
- 
+
 /** Llena #select-analisis con las etiquetas actuales y conserva el nodo elegido (si sigue existiendo). */
 function actualizarSelectAnalisis() {
   const select = $("select-analisis");
@@ -2090,7 +2102,7 @@ function actualizarSelectAnalisis() {
   llenarSelectNodos(select, indice);
   $("texto-analisis").textContent = "";      // el resultado anterior pudo quedar desactualizado
 }
- 
+
 function analizarNodo() {
   const salida = $("texto-analisis");
   const idx = Number($("select-analisis").value);
@@ -2098,15 +2110,83 @@ function analizarNodo() {
     salida.textContent = "Elige un nodo de la lista.";
     return;
   }
- 
+
   const destinos = [];
   matriz[idx].forEach((valor, j) => { if (valor === 1) destinos.push(`${etiquetas[idx]}->${etiquetas[j]}`); });
- 
+
   salida.textContent = `Nodo actual: ${etiquetas[idx]}\nConexiones: ${destinos.length ? destinos.join(", ") : "Ninguna"}`;
 }
- 
+
 function inicializarAnalisis() {
   $("btn-analizar").addEventListener("click", analizarNodo);
 }
- 
+
 inicializarAnalisis();
+
+
+/* ==========================================================================
+   MODO EDICIÓN IN-PLACE · grafo bloqueado → Editar → Aceptar / Cancelar
+   (las variables matriz_backup, etiquetas_backup, posiciones_backup y
+   modoEdicionActivo están declaradas arriba, en el estado global)
+   ========================================================================== */
+
+// Mientras se edita, estos botones se deshabilitan: usan o abandonan el grafo y dejarían el modo edición a medias
+const IDS_BLOQUEADOS_EN_EDICION = ["btn-guardar", "btn-compartir-qr", "btn-volver-inicio", "btn-ejecutar"];
+
+/** Refleja `modoEdicionActivo` en la interfaz: botones, panel, bloqueo del lienzo, texto, matriz y grafo. */
+function aplicarEstadoEdicion() {
+  $("btn-abrir-edicion").classList.toggle("oculto", modoEdicionActivo);
+  $("panel-edicion").classList.toggle("oculto", !modoEdicionActivo);
+  lienzo.dataset.bloqueado = String(!modoEdicionActivo);
+  IDS_BLOQUEADOS_EN_EDICION.forEach((id) => {
+    const boton = $(id);                          // btn-compartir-qr lo crea inicializarAvanzadas()
+    if (boton) boton.disabled = modoEdicionActivo;
+  });
+
+  // Se descarta cualquier arrastre o resaltado pendiente del lienzo
+  nodoArrastrado = null;
+  nodoOrigen = null;
+  puntoActual = null;
+  nodoHover = null;
+  lienzo.style.cursor = "";
+
+  actualizarTextoModo();
+  renderizarMatriz();      // las celdas solo son editables en modo edición
+  dibujarGrafo();
+}
+
+/** Guarda una copia (de valores, no de referencias) del grafo y abre las herramientas. */
+function abrirEdicion() {
+  matriz_backup = matriz.map((fila) => fila.slice());
+  etiquetas_backup = etiquetas.slice();
+  posiciones_backup = posiciones ? posiciones.map((p) => p.slice()) : null;
+  modoEdicionActivo = true;
+  aplicarEstadoEdicion();
+}
+
+/** Conserva los cambios (ya están en matriz, etiquetas y posiciones) y vuelve a bloquear. */
+function aceptarEdicion() {
+  modoEdicionActivo = false;
+  matriz_backup = etiquetas_backup = posiciones_backup = null;
+  aplicarEstadoEdicion();
+}
+
+/** Descarta los cambios: restaura el grafo desde los respaldos y vuelve a bloquear. */
+function cancelarEdicion() {
+  if (matriz_backup) {
+    matriz = matriz_backup.map((fila) => fila.slice());
+    etiquetas = etiquetas_backup.slice();
+    posiciones = posiciones_backup ? posiciones_backup.map((p) => p.slice()) : null;
+  }
+  modoEdicionActivo = false;
+  matriz_backup = etiquetas_backup = posiciones_backup = null;
+  aplicarEstadoEdicion();  // incluye renderizarMatriz() y dibujarGrafo()
+}
+
+function inicializarEdicion() {
+  $("btn-abrir-edicion").addEventListener("click", abrirEdicion);
+  $("btn-aceptar-edicion").addEventListener("click", aceptarEdicion);
+  $("btn-cancelar-edicion").addEventListener("click", cancelarEdicion);
+}
+
+inicializarEdicion();

@@ -131,16 +131,27 @@
     </div>
 
     <div class="botonera card" role="toolbar" aria-label="Herramientas del grafo">
-      <div class="botonera__grupo" role="group" aria-label="Herramienta de dibujo">
-        <button type="button" class="btn btn--herramienta" data-modo="mover" aria-pressed="true">Mover nodos</button>
-        <button type="button" class="btn btn--herramienta" data-modo="conectar" aria-pressed="false">Añadir arista</button>
-        <button type="button" class="btn btn--herramienta" data-modo="borrar" aria-pressed="false">Quitar arista</button>
+
+      <!-- Botón que abre el modo edición (visible mientras el grafo está bloqueado) -->
+      <button type="button" id="btn-abrir-edicion" class="btn btn--primario"> Editar Matriz y Gráfico</button>
+
+      <!-- Panel de edición: solo visible en modo edición -->
+      <div id="panel-edicion" class="botonera__grupo oculto">
+        <div class="botonera__grupo" role="group" aria-label="Herramienta de dibujo">
+          <button type="button" class="btn btn--herramienta" data-modo="mover" aria-pressed="true">Mover nodos</button>
+          <button type="button" class="btn btn--herramienta" data-modo="conectar" aria-pressed="false">Añadir arista</button>
+          <button type="button" class="btn btn--herramienta" data-modo="borrar" aria-pressed="false">Quitar arista</button>
+        </div>
+        <button type="button" class="btn btn--secundario" id="btn-editar-arista-manual">Editar arista manual</button>
+        <button type="button" class="btn btn--secundario" id="btn-nombrar">Nombrar nodos</button>
+        <button type="button" class="btn btn--primario" id="btn-aceptar-edicion">✔ Aceptar</button>
+        <button type="button" class="btn btn--secundario" id="btn-cancelar-edicion">✖ Cancelar</button>
       </div>
+
+      <!-- Siempre visibles -->
       <div class="botonera__grupo" role="group" aria-label="Acciones">
         <button type="button" class="btn btn--secundario" id="btn-regenerar">Aleatorio</button>
         <button type="button" class="btn btn--secundario" id="btn-limpiar">Limpiar</button>
-          <button type="button" class="btn btn--secundario" id="btn-editar-arista">Editar arista manual</button>
-        <button type="button" class="btn btn--secundario" id="btn-nombrar">Nombrar nodos</button>
         <button type="button" class="btn btn--secundario" id="btn-guardar">Guardar ejercicio</button>
       </div>
       <div class="botonera__grupo botonera__grupo--fin">

@@ -698,7 +698,10 @@ function inicializarHerramientas() {
   document.querySelectorAll(".btn--herramienta[data-modo]").forEach((boton) => {
     boton.addEventListener("click", () => cambiarModoHerramienta(boton.dataset.modo));
   });
-  $("btn-limpiar").addEventListener("click", limpiarGrafo);
+  $("btn-limpiar").addEventListener("click", () => pedirConfirmacion(
+    "¿Estás seguro de que deseas borrar todas las aristas? Esta acción no se puede deshacer.",
+    limpiarGrafo
+  ));
   $("btn-regenerar").addEventListener("click", regenerarGrafo);
 }
 
@@ -757,7 +760,12 @@ function inicializarApp() {
     procedimiento = calcularProcedimiento(matriz);
     mostrarPantallaPasos();
   });
-  ["btn-volver-inicio", "btn-nuevo"].forEach((id) => $(id).addEventListener("click", mostrarPantallaInicio));
+  ["btn-volver-inicio", "btn-nuevo"].forEach((id) => {
+    $(id).addEventListener("click", () => pedirConfirmacion(
+      "¿Estás seguro de que deseas volver al inicio? El grafo actual se perderá si no lo has guardado.",
+      mostrarPantallaInicio
+    ));
+  });
 
   inicializarHerramientas();
 }
@@ -773,7 +781,7 @@ inicializarApp();
 /* ============ UTILIDADES ============ */
 const CLAVE_EJERCICIOS = "componentesConexas.ejercicios.v1";
 const URL_QRCODEJS = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual"];
+const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual", "modal-confirmacion"];
 const PALETA_COMPONENTES = [          // color base de cada componente (tonos saturados para el efecto 3D)
   "#3B82F6", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#14B8A6",
   "#EC4899", "#84CC16", "#6366F1", "#F97316", "#0EA5E9", "#A16207",
@@ -815,6 +823,29 @@ function cerrarModal(id) {
   if (!modal) return;
   modal.classList.add("oculto");
   if (focoPrevio && focoPrevio.focus) focoPrevio.focus();
+}
+
+/* ---------- Modal de confirmación (sustituye a window.confirm) ---------- */
+let accionPendiente = null;
+
+/** Muestra `mensaje` y ejecuta `accion` solo si el usuario presiona Aceptar. */
+function pedirConfirmacion(mensaje, accion) {
+  $("texto-confirmacion").textContent = mensaje;
+  accionPendiente = accion;
+  abrirModal("modal-confirmacion");
+  $("btn-confirmacion-cancelar").focus();      // el foco empieza en Cancelar: Enter no confirma por accidente
+}
+
+function aceptarConfirmacion() {
+  const accion = accionPendiente;
+  accionPendiente = null;
+  cerrarModal("modal-confirmacion");
+  if (accion) accion();
+}
+
+function cancelarConfirmacion() {
+  accionPendiente = null;
+  cerrarModal("modal-confirmacion");
 }
 
 const scriptsCargados = {};
@@ -1620,6 +1651,11 @@ function inicializarAvanzadas() {
   // Manual de usuario
   $("btn-manual-uso").addEventListener("click", abrirModalManual);
   $("btn-cerrar-manual").addEventListener("click", () => cerrarModal("modal-manual"));
+
+  // Modal de confirmación
+  $("btn-confirmacion-aceptar").addEventListener("click", aceptarConfirmacion);
+  $("btn-confirmacion-cancelar").addEventListener("click", cancelarConfirmacion);
+  $("modal-confirmacion").addEventListener("click", (e) => { if (e.target === $("modal-confirmacion")) cancelarConfirmacion(); });
 
   // Cierre de modales: clic en el fondo y tecla Escape
   ["modal-qr", "modal-guardados", "modal-manual"].forEach((id) => {

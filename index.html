@@ -43,7 +43,7 @@
 <main class="contenedor">
 
   <!-- ===== PANTALLA 1: BIENVENIDA ===== -->
-   <section id="pantalla-inicio" class="pantalla" aria-labelledby="t-inicio">
+  <section id="pantalla-inicio" class="pantalla" aria-labelledby="t-inicio">
 
     <!-- Tarjeta 1: Crear nuevo grafo -->
     <article class="card">
@@ -109,7 +109,7 @@
         <h3 class="card__subtitulo">Matriz de adyacencia</h3>
         <div id="contenedor-matriz" class="matriz-scroll"></div>
         <p class="nota">Un 1 en la posición (i, j) indica una arista de i hacia j. En modo manual, haz clic en una celda para alternarla.</p>
-        
+
         <!-- ===== ANÁLISIS DE NODO ===== -->
         <div style="margin-top:1.1rem;padding:1rem;background:var(--fondo);border:1px solid var(--borde);border-radius:12px">
           <h3 class="card__subtitulo" style="margin-bottom:.6rem">Análisis de nodo</h3>
@@ -133,7 +133,7 @@
     <div class="botonera card" role="toolbar" aria-label="Herramientas del grafo">
 
       <!-- Botón que abre el modo edición (visible mientras el grafo está bloqueado) -->
-      <button type="button" id="btn-abrir-edicion" class="btn btn--primario"> Editar Matriz y Gráfico</button>
+      <button type="button" id="btn-abrir-edicion" class="btn btn--primario">✏️ Editar Matriz y Gráfico</button>
 
       <!-- Panel de edición: solo visible en modo edición -->
       <div id="panel-edicion" class="botonera__grupo oculto">
@@ -209,6 +209,7 @@
       <div class="controles">
         <button type="button" class="btn btn--secundario" id="btn-volver-edicion-resultado">← Volver a Edición</button>
         <button type="button" class="btn btn--secundario" id="btn-pdf">Descargar informe en PDF</button>
+        <button type="button" class="btn btn--secundario" id="btn-compartir-qr">Compartir QR</button>
         <button type="button" class="btn btn--primario" id="btn-nuevo">Nuevo grafo</button>
       </div>
     </article>
@@ -259,7 +260,7 @@
   <div class="modal__caja">
     <h3 id="t-modal-arista" class="card__subtitulo">Editar arista</h3>
     <p class="card__texto">Elige el origen y el destino, y presiona Agregar o Quitar. La arista va del origen hacia el destino.</p>
- 
+
     <div class="opciones-nombres">
       <label class="campo">
         <span class="campo__etiqueta">Origen</span>
@@ -270,9 +271,9 @@
         <select id="select-destino" class="campo__control"></select>
       </label>
     </div>
- 
+
     <p id="mensaje-arista" class="nota" role="status"></p>
- 
+
     <div class="controles">
       <button type="button" class="btn btn--primario" id="btn-arista-agregar">Agregar</button>
       <button type="button" class="btn btn--secundario" id="btn-arista-quitar">Quitar</button>
@@ -280,13 +281,13 @@
     </div>
   </div>
 </div>
- 
+
 <!-- ===== MODAL: NOMBRAR NODOS ===== -->
 <div id="modal-nombres" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-nombres">
   <div class="modal__caja modal__caja--ancha">
     <h3 id="t-modal-nombres" class="card__subtitulo">Nombrar nodos</h3>
     <p class="card__texto">Elige un estilo de nombres (el mismo para todos los nodos).</p>
- 
+
     <div class="opciones-nombres">
       <label class="campo">
         <span class="campo__etiqueta">Estilo</span>
@@ -308,11 +309,11 @@
         <input type="text" id="input-prefijo-nombres" class="campo__control campo__control--corto" value="Q" autocomplete="off" spellcheck="false">
       </label>
     </div>
- 
+
     <p id="ayuda-nombres" class="nota"></p>
     <div id="grilla-nombres" class="grilla-nombres"></div>
     <p id="error-nombres" class="mensaje-error oculto" role="alert"></p>
- 
+
     <div class="controles">
       <button type="button" class="btn btn--secundario" id="btn-nombres-defecto">Por defecto</button>
       <button type="button" class="btn btn--secundario" id="btn-nombres-rellenar">Rellenar</button>

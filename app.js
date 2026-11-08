@@ -2237,3 +2237,90 @@ function inicializarEdicion() {
 }
 
 inicializarEdicion();
+
+
+/* ==========================================================================
+   FONDO ANIMADO · red de nodos ("constelación") en un canvas nativo
+   ========================================================================== */
+function iniciarFondoNodos() {
+  const canvas = $("canvas-fondo");
+  if (!canvas) return;
+  const c = canvas.getContext("2d");
+
+  const DISTANCIA_MAX = 150;      // px: por debajo de esta distancia se unen dos nodos con una línea
+  const RADIO = 1.5;              // px
+  const VELOCIDAD_MAX = 0.5;      // px por cuadro (a 60 fps), en cada eje: entre -0.5 y 0.5
+  const ALFA_NODO = 0.15;
+  const ALFA_LINEA_MAX = 0.15;    // la línea se desvanece a 0 al acercarse a DISTANCIA_MAX
+  const color = (alfa) => `rgba(159, 83, 255, ${alfa})`;
+  const movimientoReducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let ancho = window.innerWidth;
+  let alto = window.innerHeight;
+  const cantidad = Math.min(70, Math.max(50, Math.round((ancho * alto) / 25000)));   // entre 50 y 70 según el tamaño de la ventana
+  const particulas = Array.from({ length: cantidad }, () => ({
+    x: Math.random() * ancho,
+    y: Math.random() * alto,
+    vx: (Math.random() - 0.5) * 2 * VELOCIDAD_MAX,
+    vy: (Math.random() - 0.5) * 2 * VELOCIDAD_MAX,
+  }));
+
+  function ajustarTamano() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    ancho = window.innerWidth;
+    alto = window.innerHeight;
+    canvas.width = ancho * dpr;
+    canvas.height = alto * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    particulas.forEach((p) => {                 // si la ventana se encoge, nadie queda fuera
+      p.x = Math.min(p.x, ancho);
+      p.y = Math.min(p.y, alto);
+    });
+    if (movimientoReducido) dibujar();          // sin animación, se redibuja el cuadro fijo
+  }
+
+  function dibujar() {
+    c.clearRect(0, 0, ancho, alto);
+
+    c.lineWidth = 1;
+    for (let i = 0; i < particulas.length; i++) {
+      for (let j = i + 1; j < particulas.length; j++) {
+        const distancia = Math.hypot(particulas[i].x - particulas[j].x, particulas[i].y - particulas[j].y);
+        if (distancia >= DISTANCIA_MAX) continue;
+        c.strokeStyle = color(ALFA_LINEA_MAX * (1 - distancia / DISTANCIA_MAX));
+        c.beginPath();
+        c.moveTo(particulas[i].x, particulas[i].y);
+        c.lineTo(particulas[j].x, particulas[j].y);
+        c.stroke();
+      }
+    }
+
+    c.fillStyle = color(ALFA_NODO);
+    particulas.forEach((p) => {
+      c.beginPath();
+      c.arc(p.x, p.y, RADIO, 0, 2 * Math.PI);
+      c.fill();
+    });
+  }
+
+  let ultimoCuadro = performance.now();
+  function cuadro(ahora) {
+    const dt = Math.min((ahora - ultimoCuadro) / 16.667, 3);    // mismo ritmo en pantallas de 60, 120 o 144 Hz
+    ultimoCuadro = ahora;
+
+    particulas.forEach((p) => {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.x < 0 || p.x > ancho) { p.vx *= -1; p.x = Math.min(Math.max(p.x, 0), ancho); }     // rebote en los bordes
+      if (p.y < 0 || p.y > alto) { p.vy *= -1; p.y = Math.min(Math.max(p.y, 0), alto); }
+    });
+    dibujar();
+    requestAnimationFrame(cuadro);
+  }
+
+  window.addEventListener("resize", ajustarTamano);
+  ajustarTamano();
+  if (!movimientoReducido) requestAnimationFrame(cuadro);
+}
+
+iniciarFondoNodos();

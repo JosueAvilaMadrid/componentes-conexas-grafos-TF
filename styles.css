@@ -29,16 +29,16 @@ body {
   font-size: 1rem;
   line-height: 1.55;
   color: var(--color-estructura);
-  /* Fondo animado premium (Respiración) */
-  background: linear-gradient(-45deg, #F4F6F9, #EAEFF5, #ECE9F2, #F4F6F9);
-  background-size: 400% 400%;
-  animation: respiracionFondo 15s ease infinite;
+  background-color: var(--color-fondo);
+  /* Volumen sutil: metal claro al centro y un velo morado muy pálido hacia los bordes */
+  background-image: radial-gradient(ellipse at 50% 35%, var(--color-fondo) 0%, var(--color-fondo) 40%, #ECE6F7 100%);
+  background-attachment: fixed;
 }
 
-@keyframes respiracionFondo {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* Fondo animado de red de nodos (lo dibuja iniciarFondoNodos en app.js) */
+#canvas-fondo {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: -1; pointer-events: none;
 }
 h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }

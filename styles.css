@@ -215,8 +215,7 @@ main { padding-bottom: 2rem; }
   background: var(--blanco); border: 1px solid var(--borde); border-radius: 12px; touch-action: none;
 }
 .lienzo[data-modo="mover"] { cursor: grab; }
-.lienzo[data-modo="conectar"] { cursor: crosshair; }
-.lienzo[data-modo="borrar"] { cursor: pointer; }
+.lienzo[data-modo="aristas"] { cursor: crosshair; }
 
 /* Lienzo bloqueado (fuera del modo edición): sin cursor de arrastre y sin bloquear el scroll táctil */
 .lienzo[data-bloqueado="true"] { touch-action: auto; }

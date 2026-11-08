@@ -2249,10 +2249,10 @@ function iniciarFondoNodos() {
 
   const DISTANCIA_MAX = 150;      // px: por debajo de esta distancia se unen dos nodos con una línea
   const RADIO = 1.5;              // px
-  const VELOCIDAD_MAX = 0.5;      // px por cuadro (a 60 fps), en cada eje: entre -0.5 y 0.5
-  const ALFA_NODO = 0.15;
-  const ALFA_LINEA_MAX = 0.15;    // la línea se desvanece a 0 al acercarse a DISTANCIA_MAX
-  const color = (alfa) => `rgba(159, 83, 255, ${alfa})`;
+  const VELOCIDAD_MAX = 0.6;      // px por cuadro (a 60 fps), en cada eje: entre -0.5 y 0.5
+  const ALFA_NODO = 0.35;
+  const ALFA_LINEA_MAX = 0.35;    
+  const color = (alfa) => `rgba(37, 19, 62, ${alfa})`;
   const movimientoReducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   let ancho = window.innerWidth;

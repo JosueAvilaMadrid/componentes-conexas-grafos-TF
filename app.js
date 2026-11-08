@@ -287,6 +287,7 @@ function mostrarPantallaEdicion() {
   mostrarPantalla(2);
   modoEdicionActivo = false;       // la pantalla siempre se abre con el grafo bloqueado
   matriz_backup = etiquetas_backup = posiciones_backup = null;
+  aplicarModoHerramienta("aristas");   // herramienta por defecto: aristas (Mover nodos apagado)
   aplicarEstadoEdicion();          // actualiza texto, botones, matriz y grafo
 }
 
@@ -296,9 +297,8 @@ function mostrarPantallaPasos() {
 }
 
 const AYUDA_HERRAMIENTA = {
-  mover: "Arrastra los nodos para acomodarlos.",
-  conectar: "Arrastra desde un nodo hasta otro para crear una arista dirigida.",
-  borrar: "Arrastra desde un nodo hasta otro para quitar la arista que va del primero al segundo.",
+  aristas: "Arrastra desde un nodo hasta otro: si la arista no existe se crea y, si ya existe, se quita. Haz clic sobre un nodo (o suéltalo sobre sí mismo) para crear o quitar un bucle. Activa «Mover nodos» para acomodarlos.",
+  mover: "Arrastra los nodos para acomodarlos. Vuelve a presionar «Mover nodos» para regresar a las aristas.",
 };
 
 function actualizarTextoModo() {
@@ -346,17 +346,17 @@ function crearMatrizDOM(M, etqFilas, etqColumnas, opciones = {}) {
       else if (valor === 1) clase += " celda--uno";
       if (bloques.has(clave)) clase += " celda--bloque";
 
-      if (editable) clase += i === j ? " celda--fija" : " celda--editable";
+      if (editable) clase += " celda--editable";
       const celda = nuevaCelda(valor, clase);
       celda.dataset.i = i;
       celda.dataset.j = j;
 
-      if (editable && i !== j) {
+      if (editable) {
         celda.tabIndex = 0;
         celda.setAttribute("role", "button");
-        celda.setAttribute("aria-label", `Arista de ${etqFilas[i]} hacia ${etqColumnas[j]}: ${valor}`);
-      } else if (editable) {
-        celda.title = "La diagonal siempre es 0 en la matriz de adyacencia";
+        celda.setAttribute("aria-label", i === j
+          ? `Bucle de ${etqFilas[i]} hacia sí mismo: ${valor}`
+          : `Arista de ${etqFilas[i]} hacia ${etqColumnas[j]}: ${valor}`);
       }
       rejilla.appendChild(celda);
     });
@@ -372,9 +372,8 @@ function renderizarMatriz() {
   actualizarSelectAnalisis();      // el selector de análisis siempre refleja los nodos y nombres actuales
 }
 
-/** Alterna 0/1 de una celda (no diagonal) y actualiza tabla y lienzo. */
+/** Alterna 0/1 de una celda (la diagonal incluida: un 1 en (i, i) es un bucle) y actualiza tabla y lienzo. */
 function alternarArista(i, j, conTeclado = false) {
-  if (i === j) return;
   matriz[i][j] = matriz[i][j] === 1 ? 0 : 1;
   renderizarMatriz();
   dibujarGrafo();
@@ -451,7 +450,40 @@ function dibujarPunta(c, punta, angulo) {
   c.fill();
 }
 
-/** Flecha provisional (discontinua) mientras el usuario arrastra para conectar o borrar. */
+/**
+ * Bucle (self-loop): curva de Bézier que sale del borde del nodo, sobresale hacia la esquina superior
+ * derecha y regresa al borde con una punta de flecha (mismo color y grosor que una arista normal).
+ */
+function dibujarBucle(c, [x, y], { color = COLOR_ESTRUCTURA, ancho = 2, discontinuo = false } = {}) {
+  const direccion = -Math.PI / 4;                  // esquina superior derecha (el eje y del canvas crece hacia abajo)
+  const salida = direccion - 0.55;                 // ángulo, sobre el borde del nodo, donde nace el bucle
+  const llegada = direccion + 0.55;                // ángulo donde termina, con la punta de flecha
+  const alcance = RADIO_NODO + 60;                 // qué tanto sobresalen los puntos de control
+  const sobreBorde = (radio, angulo) => [x + radio * Math.cos(angulo), y + radio * Math.sin(angulo)];
+
+  const inicio = sobreBorde(RADIO_NODO, salida);
+  const control1 = sobreBorde(alcance, salida - 0.25);
+  const control2 = sobreBorde(alcance, llegada + 0.25);
+  const punta = sobreBorde(RADIO_NODO, llegada);   // la punta toca el borde exterior del nodo
+
+  const largo = Math.hypot(punta[0] - control2[0], punta[1] - control2[1]);
+  const ux = (punta[0] - control2[0]) / largo;     // sentido en el que la flecha llega al nodo
+  const uy = (punta[1] - control2[1]) / largo;
+  const base = [punta[0] - ux * LARGO_PUNTA * 0.85, punta[1] - uy * LARGO_PUNTA * 0.85];
+
+  c.strokeStyle = color;
+  c.fillStyle = color;
+  c.lineWidth = ancho;
+  if (discontinuo) c.setLineDash([7, 5]);
+  c.beginPath();
+  c.moveTo(inicio[0], inicio[1]);
+  c.bezierCurveTo(control1[0], control1[1], control2[0], control2[1], base[0], base[1]);
+  c.stroke();
+  c.setLineDash([]);
+  dibujarPunta(c, punta, Math.atan2(uy, ux));
+}
+
+/** Flecha provisional (discontinua) mientras el usuario arrastra para crear o quitar una arista. */
 function dibujarFlechaVirtual(c, desde, hasta, color) {
   const dx = hasta[0] - desde[0];
   const dy = hasta[1] - desde[1];
@@ -507,7 +539,9 @@ function trazarGrafo(c, M, etqs, pos, { resaltado = null, colorNodo = null } = {
 
   for (let i = 0; i < M.length; i++) {
     for (let j = 0; j < M.length; j++) {
-      if (i !== j && M[i][j] === 1) dibujarFlecha(c, centros[i], centros[j], M[j][i] === 1);
+      if (M[i][j] !== 1) continue;
+      if (i === j) dibujarBucle(c, centros[i]);                          // bucle: el nodo apunta a sí mismo
+      else dibujarFlecha(c, centros[i], centros[j], M[j][i] === 1);
     }
   }
   // Nodos encima de las líneas
@@ -530,19 +564,26 @@ function dibujarGrafo() {
   // Flecha virtual: parte del nodo origen y sigue al cursor (o se ajusta al borde del nodo destino)
   if (conectando && puntoActual) {
     const desde = [posiciones[nodoOrigen][0] * LADO, posiciones[nodoOrigen][1] * LADO];
+    // Cursor sobre el propio nodo de origen: soltar crea o quita un bucle, así que se muestra un bucle de guía
+    if (nodoEn(puntoActual[0], puntoActual[1]) === nodoOrigen) {
+      dibujarBucle(ctx, desde, { color: matriz[nodoOrigen][nodoOrigen] === 1 ? "#5B4F72" : COLOR_ACENTO, ancho: 2.5, discontinuo: true });
+      return;
+    }
     let hasta = puntoActual;
     if (nodoHover !== null && nodoHover !== nodoOrigen) {
       const centro = [posiciones[nodoHover][0] * LADO, posiciones[nodoHover][1] * LADO];
       const d = Math.hypot(desde[0] - centro[0], desde[1] - centro[1]) || 1;
       hasta = [centro[0] + ((desde[0] - centro[0]) / d) * RADIO_NODO, centro[1] + ((desde[1] - centro[1]) / d) * RADIO_NODO];
     }
-    dibujarFlechaVirtual(ctx, desde, hasta, lienzo.dataset.modo === "borrar" ? "#5B4F72" : COLOR_ACENTO);
+    // Inteligente: gris si la arista ya existe (se va a quitar), morado vibrante si es nueva (se va a crear)
+    const existe = nodoHover !== null && nodoHover !== nodoOrigen && matriz[nodoOrigen][nodoHover] === 1;
+    dibujarFlechaVirtual(ctx, desde, hasta, existe ? "#5B4F72" : COLOR_ACENTO);
   }
 }
 
 /* ============ 4. DRAG & DROP DE NODOS ============ */
 let nodoArrastrado = null;
-let nodoOrigen = null;        // nodo desde el que se arrastra una flecha (modos conectar / borrar)
+let nodoOrigen = null;        // nodo desde el que se arrastra una flecha (modo aristas)
 let puntoActual = null;       // posición del cursor mientras se arrastra la flecha virtual
 let nodoHover = null;
 let desfase = [0, 0];
@@ -580,7 +621,7 @@ function alPresionar(e) {
   if (i === null) return;
 
   const modo = lienzo.dataset.modo;
-  if (modo === "conectar" || modo === "borrar") {      // no se mueve el nodo: se arrastra una flecha virtual
+  if (modo === "aristas") {      // no se mueve el nodo: se arrastra una flecha virtual
     nodoOrigen = i;
     puntoActual = [x, y];
     nodoHover = null;
@@ -628,8 +669,8 @@ function alSoltar(e) {
   if (nodoOrigen !== null) {
     const [x, y] = puntoDelEvento(e);
     const destino = nodoEn(x, y);
-    if (destino !== null && destino !== nodoOrigen) {
-      matriz[nodoOrigen][destino] = lienzo.dataset.modo === "conectar" ? 1 : 0;
+    if (destino !== null) {      // destino === nodoOrigen: crea o quita un bucle
+      matriz[nodoOrigen][destino] = matriz[nodoOrigen][destino] === 1 ? 0 : 1;
       renderizarMatriz();
     }
     nodoOrigen = null;
@@ -660,7 +701,8 @@ function alSalir() {
 }
 
 /* ============ HERRAMIENTAS DEL LIENZO ============ */
-function cambiarModoHerramienta(modo) {
+/** Fija el modo del lienzo ("aristas" o "mover") y sincroniza botón, cursor, texto y dibujo. */
+function aplicarModoHerramienta(modo) {
   lienzo.dataset.modo = modo;
   document.querySelectorAll(".btn--herramienta[data-modo]").forEach((boton) => {
     boton.setAttribute("aria-pressed", String(boton.dataset.modo === modo));
@@ -668,9 +710,15 @@ function cambiarModoHerramienta(modo) {
   nodoArrastrado = null;
   nodoOrigen = null;
   puntoActual = null;
+  nodoHover = null;
   lienzo.style.cursor = "";
   actualizarTextoModo();
   solicitarDibujo();
+}
+
+/** Toggle: si la herramienta pulsada ya está activa se apaga y se vuelve a "aristas"; si no, se activa. */
+function cambiarModoHerramienta(modo) {
+  aplicarModoHerramienta(lienzo.dataset.modo === modo ? "aristas" : modo);
 }
 
 /** Deja la matriz en ceros (se conservan los nodos y su posición). */
@@ -702,7 +750,10 @@ function inicializarHerramientas() {
     "¿Estás seguro de que deseas borrar todas las aristas? Esta acción no se puede deshacer.",
     limpiarGrafo
   ));
-  $("btn-regenerar").addEventListener("click", regenerarGrafo);
+  $("btn-regenerar").addEventListener("click", () => pedirConfirmacion(
+    "¿Estás seguro? Se creará un grafo al azar y perderás el actual si no lo has guardado.",
+    regenerarGrafo
+  ));
 }
 
 /* ============ 5. SELECTOR DE NODOS Y BOTONES BASE ============ */
@@ -760,12 +811,14 @@ function inicializarApp() {
     procedimiento = calcularProcedimiento(matriz);
     mostrarPantallaPasos();
   });
-  ["btn-volver-inicio", "btn-nuevo"].forEach((id) => {
-    $(id).addEventListener("click", () => pedirConfirmacion(
-      "¿Estás seguro de que deseas volver al inicio? El grafo actual se perderá si no lo has guardado.",
-      mostrarPantallaInicio
-    ));
-  });
+  $("btn-volver-inicio").addEventListener("click", () => pedirConfirmacion(
+    "¿Estás seguro de que deseas volver al inicio? El grafo actual se perderá si no lo has guardado.",
+    mostrarPantallaInicio
+  ));
+  $("btn-nuevo").addEventListener("click", () => pedirConfirmacion(
+    "¿Estás seguro de que deseas volver al inicio? El grafo actual se perderá si no lo has guardado.",
+    mostrarPantallaInicio
+  ));
 
   inicializarHerramientas();
 }
@@ -833,7 +886,7 @@ function pedirConfirmacion(mensaje, accion) {
   $("texto-confirmacion").textContent = mensaje;
   accionPendiente = accion;
   abrirModal("modal-confirmacion");
-  $("btn-confirmacion-cancelar").focus();      // el foco empieza en Cancelar: Enter no confirma por accidente
+  $("btn-confirmar-cancelar").focus();      // el foco empieza en Cancelar: Enter no confirma por accidente
 }
 
 function aceptarConfirmacion() {
@@ -881,7 +934,6 @@ function normalizarGrafo(datos) {
   }
 
   const matrizOk = M.map((fila, i) => fila.map((v, j) => {
-    if (i === j) return 0;                       // la diagonal siempre es 0
     if (v !== 0 && v !== 1) throw new Error("La matriz solo puede contener 0 y 1.");
     return v;
   }));
@@ -907,21 +959,23 @@ const bitsAHex = (bits) => {
 const hexABits = (hex) => [...hex].map((c) => parseInt(c, 16).toString(2).padStart(4, "0")).join("");
 
 /**
- * Estado actual -> JSON compacto: [1, n, aristas en hex, posiciones en base 36, etiquetas?]
- * Las aristas son los n·(n-1) bits fuera de la diagonal; cada coordenada ocupa 2 caracteres base 36.
+ * Estado actual -> JSON compacto: [versión, n, aristas en hex, posiciones en base 36, etiquetas?]
+ * Versión 1: los n·(n-1) bits fuera de la diagonal (grafo sin bucles, compatible con versiones anteriores).
+ * Versión 2: los n·n bits, diagonal incluida (solo si hay algún bucle). Cada coordenada ocupa 2 caracteres base 36.
  */
 function codificarGrafoParaQR() {
+  const conBucles = matriz.some((fila, i) => fila[i] === 1);
   let bits = "";
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      if (i !== j) bits += matriz[i][j] ? "1" : "0";
+      if (conBucles || i !== j) bits += matriz[i][j] ? "1" : "0";
     }
   }
   const pos = (posiciones && posiciones.length === n ? posiciones : posicionesEnCirculo(n))
     .map((p) => p.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 1295).toString(36).padStart(2, "0")).join(""))
     .join("");
 
-  const datos = [1, n, bitsAHex(bits), pos];
+  const datos = [conBucles ? 2 : 1, n, bitsAHex(bits), pos];
   if (etiquetas.some((e, i) => e !== String(i + 1))) datos.push(etiquetas);   // solo si hay nombres propios
   return JSON.stringify(datos);
 }
@@ -937,14 +991,16 @@ function decodificarGrafoDeQR(texto) {
 
   if (Array.isArray(datos)) {
     const [version, nn, hex, pos, etqs] = datos;
-    if (version !== 1 || !Number.isInteger(nn) || nn < 4 || nn > 12 || typeof hex !== "string" || !/^[0-9a-f]*$/i.test(hex)) {
+    if ((version !== 1 && version !== 2) || !Number.isInteger(nn) || nn < 4 || nn > 12 || typeof hex !== "string" || !/^[0-9a-f]*$/i.test(hex)) {
       throw new Error("El código QR no pertenece a un ejercicio de esta aplicación.");
     }
-    const bits = hexABits(hex).slice(0, nn * (nn - 1));
-    if (bits.length !== nn * (nn - 1)) throw new Error("El código QR está incompleto o dañado.");
+    const conBucles = version === 2;                              // versión 2: la diagonal (bucles) viene incluida
+    const total = conBucles ? nn * nn : nn * (nn - 1);
+    const bits = hexABits(hex).slice(0, total);
+    if (bits.length !== total) throw new Error("El código QR está incompleto o dañado.");
 
     let k = 0;
-    const M = Array.from({ length: nn }, (_, i) => Array.from({ length: nn }, (_, j) => (i === j ? 0 : Number(bits[k++]))));
+    const M = Array.from({ length: nn }, (_, i) => Array.from({ length: nn }, (_, j) => (i === j && !conBucles ? 0 : Number(bits[k++]))));
     const pos2 = typeof pos === "string" && pos.length === 4 * nn
       ? Array.from({ length: nn }, (_, i) => [
           parseInt(pos.substr(4 * i, 2), 36) / 1295,
@@ -1091,7 +1147,7 @@ const colorPorComponente = (componentes) => {
  * (columnas = ceil(sqrt(k))) y sus nodos se acomodan en círculo dentro de ella.
  * Devuelve:
  *  - posSeparadas:   [x, y] entre 0 y 1 para cada nodo
- *  - matrizSeparada: copia de `matriz` con 0 en las aristas que unen componentes distintas
+ *  - matrizSeparada: copia de `matriz` con 0 en las aristas que unen componentes distintas y en la diagonal (sin bucles)
  * `componentes` usa nodos base 1, como en calcularProcedimiento().
  */
 function calcularGrafoSeparado(componentes) {
@@ -1119,6 +1175,8 @@ function calcularGrafoSeparado(componentes) {
   });
 
   const matrizSeparada = matriz.map((fila, i) => fila.map((valor, j) => (compDe[i] === compDe[j] ? valor : 0)));
+  // Los bucles solo se ven y se editan en la pantalla de edición: en el resultado la diagonal se fuerza a 0
+  for (let i = 0; i < matrizSeparada.length; i++) matrizSeparada[i][i] = 0;
   return { posSeparadas, matrizSeparada };
 }
 
@@ -1173,7 +1231,8 @@ function construirInforme(proc) {
     });
   });
 
-  const diagonal = new Set(E.map((_, i) => `${i},${i}`));
+  const diagonal = new Set();      // solo los 1's agregados: un bucle ya era 1
+  E.forEach((_, i) => { if (matriz[i][i] === 0) diagonal.add(`${i},${i}`); });
   const raiz = crearElemento("div", { className: "informe" },
     estilos,
     crearElemento("div", { className: "pdf-bloque" },
@@ -1409,14 +1468,13 @@ const CONTENIDO_MANUAL = [
     titulo: "3. Pantalla de la matriz",
     html: `
       <h3>La tabla</h3>
-      <p>Es la matriz de adyacencia. La <strong>fila es el ORIGEN</strong> y la <strong>columna es el DESTINO</strong>. Un 1 (verde) en la fila A y la columna B significa que hay una flecha de A hacia B. El grafo es dirigido: A→B no significa que exista B→A. La diagonal siempre vale 0.</p>
+      <p>Es la matriz de adyacencia. La <strong>fila es el ORIGEN</strong> y la <strong>columna es el DESTINO</strong>. Un 1 (verde) en la fila A y la columna B significa que hay una flecha de A hacia B. El grafo es dirigido: A→B no significa que exista B→A. La diagonal también se puede editar: un 1 en la fila A y la columna A es un <strong>bucle</strong> (una flecha de A hacia sí mismo).</p>
       <h3>El grafo</h3>
       <p>A la derecha de la matriz se ve el grafo, con todos los nodos del mismo color (así no se adelanta el resultado). Se actualiza solo cada vez que cambias la matriz y respeta la posición que le des a cada nodo.</p>
       <h3>Herramientas del grafo</h3>
       <ul>
-        <li><strong>Mover nodos:</strong> arrastra un nodo para acomodarlo.</li>
-        <li><strong>Añadir arista:</strong> arrastra desde el nodo origen hasta el nodo destino.</li>
-        <li><strong>Quitar arista:</strong> arrastra desde el origen hasta el destino de la flecha que quieres borrar.</li>
+        <li><strong>Por defecto (aristas):</strong> arrastra desde el nodo origen hasta el nodo destino. Si la arista no existe se crea y, si ya existe, se quita.</li>
+        <li><strong>Mover nodos:</strong> es un interruptor. Al activarlo, arrastras los nodos para acomodarlos; al volver a presionarlo, regresas a las aristas.</li>
       </ul>
       <h3>Botones</h3>
       <ul>
@@ -1456,15 +1514,14 @@ const CONTENIDO_MANUAL = [
     html: `
       <p>Hay tres formas de modificar el grafo, y todas se aplican al instante (no hay botón Aceptar ni Cancelar).</p>
       <h3>1. Clic en la matriz</h3>
-      <p>Haz clic en cualquier celda para cambiar 0 por 1 o 1 por 0. Las celdas de la diagonal no se pueden editar.</p>
+      <p>Haz clic en cualquier celda para cambiar 0 por 1 o 1 por 0. Las celdas de la diagonal también se pueden editar: crean o quitan un bucle.</p>
       <h3>2. Editar arista manual</h3>
       <p>Elige el <strong>Origen</strong> y el <strong>Destino</strong> en las listas y presiona <strong>Agregar</strong> o <strong>Quitar</strong>. Si la conexión ya existe (o no existe), el programa avisa. Agregar y Quitar no cierran la ventana, así puedes editar varias aristas seguidas; usa <strong>Cerrar</strong> al terminar.</p>
-      <p>No se puede unir un nodo consigo mismo: la diagonal de la matriz de adyacencia siempre vale 0.</p>
+      <p>Si eliges el mismo nodo como origen y destino, agregas o quitas un bucle (una flecha del nodo hacia sí mismo).</p>
       <h3>3. Dibujar sobre el grafo</h3>
       <ul>
-        <li><strong>Añadir arista:</strong> arrastra con el mouse (o el dedo) desde el nodo origen hasta el nodo destino. Mientras arrastras se muestra una flecha de guía.</li>
-        <li><strong>Quitar arista:</strong> arrastra desde el origen hasta el destino de la flecha que quieres borrar.</li>
-        <li><strong>Mover nodos:</strong> arrastra un nodo para formar la figura que prefieras. Las posiciones se conservan al guardar el ejercicio y al compartirlo por QR.</li>
+        <li><strong>Aristas (modo por defecto):</strong> arrastra con el mouse (o el dedo) desde el nodo origen hasta el nodo destino. La flecha de guía es morada si vas a crear la arista y gris si ya existe y vas a quitarla. Para un bucle, haz clic sobre un nodo (o suéltalo sobre sí mismo): se dibuja un arco que sale y vuelve al nodo.</li>
+        <li><strong>Mover nodos:</strong> presiona el botón para activarlo y arrastra un nodo para formar la figura que prefieras; vuelve a presionarlo para regresar a las aristas. Las posiciones se conservan al guardar el ejercicio y al compartirlo por QR.</li>
       </ul>
       <p>Mientras editas, los nodos no cambian de color: las componentes se muestran recién al final.</p>`,
   },
@@ -1499,7 +1556,7 @@ const CONTENIDO_MANUAL = [
     titulo: "7. Graficar componentes conexas",
     html: `
       <p>El grafo original se ve siempre junto a la matriz. El resultado final aparece en la <strong>última etapa</strong> del procedimiento (la solución): el grafo de las componentes conexas.</p>
-      <p>Cada componente aparece separada de las demás, en su propio espacio de una cuadrícula y con su propio color. Dentro de cada una los nodos se acomodan en círculo, y solo se dibujan las flechas que están dentro de la componente; las flechas entre componentes distintas no se muestran.</p>
+      <p>Cada componente aparece separada de las demás, en su propio espacio de una cuadrícula y con su propio color. Dentro de cada una los nodos se acomodan en círculo, y solo se dibujan las flechas que están dentro de la componente; las flechas entre componentes distintas y los bucles no se muestran.</p>
       <p>Esta vista se reorganiza sola, así que las posiciones que diste a los nodos solo afectan al grafo original. A su lado se lista cada componente con sus nodos (V1, V2, …).</p>`,
   },
   {
@@ -1591,8 +1648,8 @@ const CONTENIDO_MANUAL = [
       <p>Usa una imagen nítida y completa, con borde blanco alrededor del código.</p>
       <h3>No se genera el QR, no se lee o no se descarga el PDF</h3>
       <p>Esas funciones usan herramientas que se cargan desde internet al abrir la página. Revisa tu conexión y recarga la página.</p>
-      <h3>¿Por qué no puedo conectar un nodo consigo mismo?</h3>
-      <p>La diagonal de la matriz de adyacencia siempre vale 0. No afecta las componentes: en el procedimiento se agrega un 1 en la diagonal de todos modos.</p>`,
+      <h3>¿Puedo conectar un nodo consigo mismo?</h3>
+      <p>Sí, eso es un bucle. Se crea con un 1 en la diagonal de la matriz, haciendo clic sobre el nodo en el grafo, o con «Editar arista manual» eligiendo el mismo nodo de origen y destino. Los bucles no cambian las componentes (en el procedimiento se agrega un 1 en la diagonal de todos modos), por eso no se dibujan en la solución.</p>`,
   },
 ];
 
@@ -1653,8 +1710,8 @@ function inicializarAvanzadas() {
   $("btn-cerrar-manual").addEventListener("click", () => cerrarModal("modal-manual"));
 
   // Modal de confirmación
-  $("btn-confirmacion-aceptar").addEventListener("click", aceptarConfirmacion);
-  $("btn-confirmacion-cancelar").addEventListener("click", cancelarConfirmacion);
+  $("btn-confirmar-aceptar").addEventListener("click", aceptarConfirmacion);
+  $("btn-confirmar-cancelar").addEventListener("click", cancelarConfirmacion);
   $("modal-confirmacion").addEventListener("click", (e) => { if (e.target === $("modal-confirmacion")) cancelarConfirmacion(); });
 
   // Cierre de modales: clic en el fondo y tecla Escape
@@ -2121,14 +2178,10 @@ function abrirModalArista() {
   $("select-origen").focus();
 }
 
-/** Origen y destino elegidos, o null (con aviso) si no se puede editar esa arista. */
+/** Origen y destino elegidos. Pueden ser el mismo nodo: esa arista es un bucle (diagonal de la matriz). */
 function leerParDeArista() {
   const origen = Number($("select-origen").value);
   const destino = Number($("select-destino").value);
-  if (origen === destino) {
-    mostrarMensajeArista("Origen y destino deben ser nodos distintos (la diagonal de la matriz siempre es 0).");
-    return null;
-  }
   return [origen, destino];
 }
 
@@ -2244,6 +2297,7 @@ function abrirEdicion() {
   etiquetas_backup = etiquetas.slice();
   posiciones_backup = posiciones ? posiciones.map((p) => p.slice()) : null;
   modoEdicionActivo = true;
+  aplicarModoHerramienta("aristas");
   aplicarEstadoEdicion();
 }
 

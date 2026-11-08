@@ -207,7 +207,6 @@ main { padding-bottom: 2rem; }
 .celda--bloque { box-shadow: inset 0 0 0 2.5px var(--color-estructura); position: relative; z-index: 1; }
 .celda--editable { cursor: pointer; }
 .celda--editable:hover, .celda--resalte { box-shadow: inset 0 0 0 2px var(--color-estructura); }
-.celda--fija { cursor: not-allowed; }
 
 /* ============ LIENZOS ============ */
 .lienzo {

@@ -145,7 +145,7 @@
 
       <article class="card">
         <h3 class="card__subtitulo">Grafo dirigido</h3>
-        <canvas id="lienzo-grafo" class="lienzo" width="640" height="640" data-modo="mover" aria-label="Representación gráfica del grafo"></canvas>
+        <canvas id="lienzo-grafo" class="lienzo" width="640" height="640" data-modo="aristas" aria-label="Representación gráfica del grafo"></canvas>
       </article>
     </div>
 
@@ -157,9 +157,7 @@
       <!-- Panel de edición: solo visible en modo edición -->
       <div id="panel-edicion" class="botonera__grupo oculto">
         <div class="botonera__grupo" role="group" aria-label="Herramienta de dibujo">
-          <button type="button" class="btn btn--herramienta" data-modo="mover" aria-pressed="true">Mover nodos</button>
-          <button type="button" class="btn btn--herramienta" data-modo="conectar" aria-pressed="false">Añadir arista</button>
-          <button type="button" class="btn btn--herramienta" data-modo="borrar" aria-pressed="false">Quitar arista</button>
+          <button type="button" class="btn btn--herramienta" data-modo="mover" aria-pressed="false">Mover nodos</button>
         </div>
         <button type="button" class="btn btn--secundario" id="btn-editar-arista-manual">Editar arista manual</button>
         <button type="button" class="btn btn--secundario" id="btn-nombrar">Nombrar nodos</button>
@@ -339,13 +337,13 @@
 </div>
 
 <!-- ===== MODAL: CONFIRMACIÓN ===== -->
-<div id="modal-confirmacion" class="modal oculto" role="alertdialog" aria-modal="true" aria-labelledby="t-modal-confirmacion" aria-describedby="texto-confirmacion">
-  <div class="modal__caja" style="max-width: 400px;">
+<div id="modal-confirmacion" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-confirmacion">
+  <div class="modal__caja" style="max-width: 420px;">
     <h3 id="t-modal-confirmacion" class="card__subtitulo">Confirmar acción</h3>
     <p id="texto-confirmacion" class="card__texto"></p>
     <div class="controles">
-      <button type="button" class="btn btn--primario" id="btn-confirmacion-aceptar">Aceptar</button>
-      <button type="button" class="btn btn--secundario" id="btn-confirmacion-cancelar">Cancelar</button>
+      <button type="button" class="btn btn--primario" id="btn-confirmar-aceptar">Aceptar</button>
+      <button type="button" class="btn btn--secundario" id="btn-confirmar-cancelar">Cancelar</button>
     </div>
   </div>
 </div>

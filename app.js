@@ -244,9 +244,9 @@ let modoConstruccion = "manual";   // "manual" | "aleatorio"
 const LADO = 640;                  // coordenadas lógicas del lienzo (px)
 const RADIO_NODO = 22;
 const LARGO_PUNTA = 13;
-const COLOR_AZUL = "#0A2342";
-const COLOR_ROJO = "#E00914";
-const COLOR_NODO = "#CFE8FA";      // celeste suave
+const COLOR_ESTRUCTURA = "#25133E";   // morado profundo: líneas, bordes y texto
+const COLOR_ACENTO = "#9F53FF";       // morado vibrante: resaltado de nodos y flecha de guía
+const COLOR_NODO = "#25133E";         // color base de todos los nodos en la pantalla de edición
 
 /** Ajusta la resolución interna del canvas a pantallas retina sin cambiar su tamaño en CSS. */
 function prepararLienzo(canvas) {
@@ -429,8 +429,8 @@ function dibujarFlecha(c, p1, p2, reciproca) {
   const g = geometriaFlecha(p1, p2, reciproca);
   if (!g) return;
 
-  c.strokeStyle = COLOR_AZUL;
-  c.fillStyle = COLOR_AZUL;
+  c.strokeStyle = COLOR_ESTRUCTURA;
+  c.fillStyle = COLOR_ESTRUCTURA;
   c.lineWidth = 2;
   c.beginPath();
   c.moveTo(g.inicio[0], g.inicio[1]);
@@ -472,19 +472,30 @@ function dibujarFlechaVirtual(c, desde, hasta, color) {
   dibujarPunta(c, hasta, Math.atan2(uy, ux));
 }
 
-function dibujarNodo(c, [x, y], texto, resaltado, relleno) {
+/** Nodo como esfera 3D: gradiente radial con el brillo arriba a la izquierda y `colorBase` hacia el borde. */
+function dibujarNodo(c, [x, y], texto, resaltado, colorBase) {
+  const radio = RADIO_NODO;
+  const gradiente = c.createRadialGradient(x - radio / 3, y - radio / 3, radio / 8, x, y, radio);
+  gradiente.addColorStop(0, "#ffffff");       // brillo de luz
+  gradiente.addColorStop(1, colorBase);       // color de sombra / base
+
   c.beginPath();
-  c.arc(x, y, RADIO_NODO, 0, 2 * Math.PI);
-  c.fillStyle = relleno;
+  c.arc(x, y, radio, 0, 2 * Math.PI);
+  c.fillStyle = gradiente;
   c.fill();
   c.lineWidth = resaltado ? 4 : 2;
-  c.strokeStyle = resaltado ? COLOR_ROJO : COLOR_AZUL;
+  c.strokeStyle = resaltado ? COLOR_ACENTO : COLOR_ESTRUCTURA;
   c.stroke();
 
-  c.fillStyle = COLOR_AZUL;
+  // Texto morado con un halo blanco fino: se lee sobre la parte clara y sobre la oscura de la esfera
   c.font = '700 16px Inter, system-ui, "Segoe UI", Arial, sans-serif';
   c.textAlign = "center";
   c.textBaseline = "middle";
+  c.lineJoin = "round";
+  c.lineWidth = 3;
+  c.strokeStyle = "rgba(255, 255, 255, .92)";
+  c.strokeText(texto, x, y + 1);
+  c.fillStyle = COLOR_ESTRUCTURA;
   c.fillText(texto, x, y + 1);
 }
 
@@ -525,7 +536,7 @@ function dibujarGrafo() {
       const d = Math.hypot(desde[0] - centro[0], desde[1] - centro[1]) || 1;
       hasta = [centro[0] + ((desde[0] - centro[0]) / d) * RADIO_NODO, centro[1] + ((desde[1] - centro[1]) / d) * RADIO_NODO];
     }
-    dibujarFlechaVirtual(ctx, desde, hasta, lienzo.dataset.modo === "borrar" ? "#4A5B72" : COLOR_ROJO);
+    dibujarFlechaVirtual(ctx, desde, hasta, lienzo.dataset.modo === "borrar" ? "#5B4F72" : COLOR_ACENTO);
   }
 }
 
@@ -763,9 +774,9 @@ inicializarApp();
 const CLAVE_EJERCICIOS = "componentesConexas.ejercicios.v1";
 const URL_QRCODEJS = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
 const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual"];
-const PALETA_COMPONENTES = [
-  "#CFE8FA", "#B3E6B3", "#FFD9A0", "#E3D4F5", "#FAD1D8", "#CDEDEA",
-  "#F3EEB0", "#D9DEE6", "#F6C9A8", "#C5D5F7", "#E6F0B8", "#F2C6E6",
+const PALETA_COMPONENTES = [          // color base de cada componente (tonos saturados para el efecto 3D)
+  "#3B82F6", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#14B8A6",
+  "#EC4899", "#84CC16", "#6366F1", "#F97316", "#0EA5E9", "#A16207",
 ];
 
 /** Crea un elemento: props admite className, texto, estilo y cualquier atributo; hijos se anexan. */
@@ -1044,6 +1055,14 @@ const colorPorComponente = (componentes) => {
   return (i) => mapa[i];
 };
 
+/**
+ * Vista "en islas" del resultado: cada componente ocupa su propia celda de una cuadrícula
+ * (columnas = ceil(sqrt(k))) y sus nodos se acomodan en círculo dentro de ella.
+ * Devuelve:
+ *  - posSeparadas:   [x, y] entre 0 y 1 para cada nodo
+ *  - matrizSeparada: copia de `matriz` con 0 en las aristas que unen componentes distintas
+ * `componentes` usa nodos base 1, como en calcularProcedimiento().
+ */
 function calcularGrafoSeparado(componentes) {
   const k = componentes.length;
   const columnas = Math.ceil(Math.sqrt(k));
@@ -1072,7 +1091,7 @@ function calcularGrafoSeparado(componentes) {
   return { posSeparadas, matrizSeparada };
 }
 
-/** Imagen (data URL) del grafo con cada componente en un color. */
+/** Imagen (data URL) del grafo para el PDF: componentes separadas, cada una con su color. */
 function imagenDelGrafo(componentes) {
   const canvas = document.createElement("canvas");
   const c = prepararLienzo(canvas);
@@ -1088,15 +1107,15 @@ function construirInforme(proc) {
   const fecha = new Date().toLocaleString("es", { dateStyle: "long", timeStyle: "short" });
 
   const estilos = crearElemento("style", {}, `
-    .informe{font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;color:#0A2342;background:#fff;line-height:1.45}
+    .informe{font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;color:#25133E;background:#fff;line-height:1.45}
     .informe h1{font-size:20px;margin:0 0 2px}
     .informe h2{font-size:14px;margin:0 0 3px}
-    .informe p{font-size:11.5px;color:#4A5B72;margin:0 0 6px}
+    .informe p{font-size:11.5px;color:#5B4F72;margin:0 0 6px}
     .informe .pdf-bloque{margin:0 0 14px;padding-top:4px}
     .informe .matriz-marco{max-width:calc(var(--cols,5)*34px + 36px)}
     .informe .celda{font-size:11px}
     .informe .celda--bloque{box-shadow:none}
-    .informe .res{font-size:13px;margin:0 0 4px;color:#0A2342}
+    .informe .res{font-size:13px;margin:0 0 4px;color:#25133E}
   `);
 
   const seccion = (titulo, descripcion, ...contenido) => crearElemento("div", { className: "pdf-bloque" },
@@ -1115,7 +1134,7 @@ function construirInforme(proc) {
       const i = Number(celda.dataset.i);
       const j = Number(celda.dataset.j);
       if (i < a || i > b || j < a || j > b) return;
-      const borde = "2px solid #0A2342";
+      const borde = "2px solid #25133E";
       if (i === a) celda.style.borderTop = borde;
       if (i === b) celda.style.borderBottom = borde;
       if (j === a) celda.style.borderLeft = borde;
@@ -1156,7 +1175,7 @@ function construirInforme(proc) {
       crearElemento("img", {
         src: imagenDelGrafo(proc.componentes),
         alt: "Grafo con sus componentes conexas",
-        estilo: "display:block;width:320px;height:320px;margin:8px auto 0;border:1px solid #E2E6EC;border-radius:8px",
+        estilo: "display:block;width:320px;height:320px;margin:8px auto 0;border:1px solid #DDE1E8;border-radius:8px",
       })));
   return raiz;
 }
@@ -1249,7 +1268,7 @@ function asegurarModalCompartir() {
     crearElemento("div", { className: "modal__caja" },
       crearElemento("h3", { id: "t-modal-compartir", className: "card__subtitulo", texto: "Compartir por código QR" }),
       crearElemento("p", { className: "card__texto", texto: "Guarda la imagen y envíasela a un compañero: podrá abrirla con «Cargar QR»." }),
-      crearElemento("div", { id: "contenedor-qr", estilo: "display:flex;justify-content:center;margin:1rem 0 .5rem;padding:16px;background:#fff;border:1px solid #E2E6EC;border-radius:12px;min-height:288px;align-items:center" }),
+      crearElemento("div", { id: "contenedor-qr", estilo: "display:flex;justify-content:center;margin:1rem 0 .5rem;padding:16px;background:#fff;border:1px solid #DDE1E8;border-radius:12px;min-height:288px;align-items:center" }),
       crearElemento("p", { id: "info-qr", className: "nota", role: "status" }),
       crearElemento("div", { className: "controles" }, descargar, cerrar)));
 
@@ -1331,7 +1350,7 @@ const CONTENIDO_MANUAL = [
         <li>Presiona <strong>Ejecutar algoritmo →</strong> para ver el procedimiento paso a paso.</li>
         <li>Avanza con <strong>Siguiente</strong> hasta la última etapa: la solución, con el número de componentes, los nodos de cada una y el grafo coloreado.</li>
         <li>Presiona <strong>Descargar informe en PDF</strong> para guardar la solución completa.</li>
-        <li>Con <strong>Guardar ejercicio</strong> lo conservas para después y con <strong>Compartir QR</strong> se lo envías a otra persona.</li>
+        <li>Con <strong>Guardar ejercicio</strong> lo conservas para después y, en la pantalla de resultados, con <strong>Compartir QR</strong> se lo envías a otra persona.</li>
       </ol>
       <h3>Las tres etapas</h3>
       <p>La barra de progreso de arriba indica dónde estás: Inicio, Edición o Resultados.</p>`,
@@ -1374,7 +1393,7 @@ const CONTENIDO_MANUAL = [
         <li><strong>Limpiar:</strong> quita todas las conexiones y deja la matriz en ceros.</li>
         <li><strong>Editar arista manual:</strong> agrega o quita una conexión eligiéndola en listas.</li>
         <li><strong>Nombrar nodos:</strong> cambia los nombres de los nodos.</li>
-        <li><strong>Guardar ejercicio</strong> y <strong>Compartir QR</strong>.</li>
+        <li><strong>Guardar ejercicio:</strong> guarda el grafo en tu navegador para abrirlo más tarde.</li>
         <li><strong>← Volver:</strong> regresa a la pantalla de inicio. El grafo actual se reemplaza cuando crees uno nuevo, así que guárdalo antes si quieres conservarlo.</li>
         <li><strong>Ejecutar algoritmo →:</strong> abre el procedimiento paso a paso.</li>
       </ul>
@@ -1388,7 +1407,7 @@ const CONTENIDO_MANUAL = [
       <p>Esta función te permite pasar un ejercicio completo a otra persona como una imagen. El grafo no se envía a ningún servidor: queda dentro del código QR.</p>
       <h3>Generar y enviar un QR</h3>
       <ol>
-        <li>Presiona <strong>Compartir QR</strong> en la pantalla de edición.</li>
+        <li>Ve a la última etapa del procedimiento (la solución) y presiona <strong>Compartir QR</strong>, junto al botón del informe en PDF.</li>
         <li>En la ventana que aparece, presiona <strong>Descargar QR (.png)</strong> y guarda la imagen.</li>
         <li>Envía la imagen a un compañero por mensaje, correo o red social.</li>
       </ol>
@@ -1414,7 +1433,7 @@ const CONTENIDO_MANUAL = [
       <ul>
         <li><strong>Añadir arista:</strong> arrastra con el mouse (o el dedo) desde el nodo origen hasta el nodo destino. Mientras arrastras se muestra una flecha de guía.</li>
         <li><strong>Quitar arista:</strong> arrastra desde el origen hasta el destino de la flecha que quieres borrar.</li>
-        <li><strong>Mover nodos:</strong> arrastra un nodo para formar la figura que prefieras. Las posiciones se conservan al guardar el ejercicio, compartirlo por QR y en el resultado final.</li>
+        <li><strong>Mover nodos:</strong> arrastra un nodo para formar la figura que prefieras. Las posiciones se conservan al guardar el ejercicio y al compartirlo por QR.</li>
       </ul>
       <p>Mientras editas, los nodos no cambian de color: las componentes se muestran recién al final.</p>`,
   },
@@ -1448,9 +1467,9 @@ const CONTENIDO_MANUAL = [
   {
     titulo: "7. Graficar componentes conexas",
     html: `
-      <p>El grafo original se ve siempre junto a la matriz. El resultado final aparece en la <strong>última etapa</strong> del procedimiento (la solución): el mismo grafo, con la posición que le diste a cada nodo, pero ahora cada nodo se pinta del color de su componente.</p>
-      <p>Los nodos de una misma componente comparten color, y a su lado se lista cada componente con sus nodos (V1, V2, …). Las flechas entre componentes distintas también se dibujan, para que se vea cómo se conectan.</p>
-      <p>Si quieres acomodar mejor los nodos, usa <strong>← Volver a Edición</strong>, muévelos y ejecuta de nuevo.</p>`,
+      <p>El grafo original se ve siempre junto a la matriz. El resultado final aparece en la <strong>última etapa</strong> del procedimiento (la solución): el grafo de las componentes conexas.</p>
+      <p>Cada componente aparece separada de las demás, en su propio espacio de una cuadrícula y con su propio color. Dentro de cada una los nodos se acomodan en círculo, y solo se dibujan las flechas que están dentro de la componente; las flechas entre componentes distintas no se muestran.</p>
+      <p>Esta vista se reorganiza sola, así que las posiciones que diste a los nodos solo afectan al grafo original. A su lado se lista cada componente con sus nodos (V1, V2, …).</p>`,
   },
   {
     titulo: "8. Procedimiento paso a paso",
@@ -1462,7 +1481,7 @@ const CONTENIDO_MANUAL = [
         <li><strong>Paso 2:</strong> se multiplica la matriz por sí misma (producto booleano) y se obtiene M², luego M³, y así hasta que ya no aparezcan 1's nuevos. Los 1's nuevos salen en naranja y debajo se explica por qué nodo se pasa (por ejemplo 4→2 (por 1)).</li>
         <li><strong>Matriz de caminos:</strong> es el resultado del Paso 2, con la lista de nodos a los que llega cada nodo.</li>
         <li><strong>Paso 3:</strong> se ordenan las filas por la cantidad de 1's, de mayor a menor. Si hay empate, va primero la fila cuyo primer 1 está más cerca de la primera columna.</li>
-        <li><strong>Paso 4:</strong> se ordenan las columnas igual que las filas. Los bloques cuadrados de 1's marcados con borde azul marino son las componentes conexas.</li>
+        <li><strong>Paso 4:</strong> se ordenan las columnas igual que las filas. Los bloques cuadrados de 1's marcados con borde morado oscuro son las componentes conexas.</li>
         <li><strong>Resultado:</strong> el número de componentes, la lista de nodos de cada una y el grafo coloreado.</li>
       </ol>
       <h3>Botones</h3>
@@ -1474,7 +1493,7 @@ const CONTENIDO_MANUAL = [
       </ul>
       <p>Si usas Anterior o Siguiente mientras se reproduce, la reproducción se pausa.</p>
       <h3>Colores</h3>
-      <p>Verde = 1, blanco = 0, naranja = 1 nuevo, azul = 1 agregado en la diagonal, borde azul marino = bloque de una componente.</p>`,
+      <p>Verde = 1, blanco = 0, naranja = 1 nuevo, azul = 1 agregado en la diagonal, borde morado oscuro = bloque de una componente.</p>`,
   },
   {
     titulo: "9. Informe en PDF",
@@ -1592,10 +1611,8 @@ function inicializarAvanzadas() {
     e.target.value = "";
   });
 
-  // Compartir QR: el botón se añade a la botonera de la pantalla de edición
-  const botonCompartir = crearElemento("button", { type: "button", id: "btn-compartir-qr", className: "btn btn--secundario", texto: "Compartir QR" });
-  $("btn-guardar").after(botonCompartir);
-  botonCompartir.addEventListener("click", abrirModalCompartirQR);
+  // Compartir QR (botón de la pantalla de resultados)
+  $("btn-compartir-qr").addEventListener("click", abrirModalCompartirQR);
 
   // PDF
   $("btn-pdf").addEventListener("click", descargarPDF);
@@ -1705,7 +1722,7 @@ function construirVistasPantalla3(proc) {
   vistas.push({
     tipo: "columnas",
     titulo: "Paso 4: Ordenar columnas y formar bloques",
-    descripcion: "Se reordenan las columnas en el mismo orden que las filas. Los bloques cuadrados diagonales formados por 1's, marcados con borde grueso azul marino, son las componentes conexas.",
+    descripcion: "Se reordenan las columnas en el mismo orden que las filas. Los bloques cuadrados diagonales formados por 1's, marcados con borde grueso morado oscuro, son las componentes conexas.",
     extra: "",
     tabla: { M: proc.R_final, filas: etqOrden, cols: etqOrden, opciones: { bloques: celdasDeBloques(proc.bloques) } },
   });
@@ -1731,7 +1748,7 @@ function mostrarSolucion() {
   $("lista-componentes").replaceChildren(...proc.componentes.map((comp, idx) => crearElemento("li", { className: "componente" },
     crearElemento("span", {
       "aria-hidden": "true",
-      estilo: `width:14px;height:14px;border-radius:50%;flex:none;border:2px solid #0A2342;background:${PALETA_COMPONENTES[idx % PALETA_COMPONENTES.length]}`,
+      estilo: `width:14px;height:14px;border-radius:50%;flex:none;border:2px solid #25133E;background:${PALETA_COMPONENTES[idx % PALETA_COMPONENTES.length]}`,
     }),
     crearElemento("span", { className: "componente__nombre", texto: `V${idx + 1}` }),
     crearElemento("span", { className: "componente__nodos", texto: `{${comp.map((nodo) => etiquetas[nodo - 1]).join(", ")}}` }),
@@ -2162,7 +2179,7 @@ inicializarAnalisis();
    ========================================================================== */
 
 // Mientras se edita, estos botones se deshabilitan: usan o abandonan el grafo y dejarían el modo edición a medias
-const IDS_BLOQUEADOS_EN_EDICION = ["btn-guardar", "btn-compartir-qr", "btn-volver-inicio", "btn-ejecutar"];
+const IDS_BLOQUEADOS_EN_EDICION = ["btn-guardar", "btn-volver-inicio", "btn-ejecutar"];
 
 /** Refleja `modoEdicionActivo` en la interfaz: botones, panel, bloqueo del lienzo, texto, matriz y grafo. */
 function aplicarEstadoEdicion() {
@@ -2170,8 +2187,7 @@ function aplicarEstadoEdicion() {
   $("panel-edicion").classList.toggle("oculto", !modoEdicionActivo);
   lienzo.dataset.bloqueado = String(!modoEdicionActivo);
   IDS_BLOQUEADOS_EN_EDICION.forEach((id) => {
-    const boton = $(id);                          // btn-compartir-qr lo crea inicializarAvanzadas()
-    if (boton) boton.disabled = modoEdicionActivo;
+    $(id).disabled = modoEdicionActivo;
   });
 
   // Se descarta cualquier arrastre o resaltado pendiente del lienzo

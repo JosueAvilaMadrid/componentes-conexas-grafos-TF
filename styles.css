@@ -29,7 +29,16 @@ body {
   font-size: 1rem;
   line-height: 1.55;
   color: var(--color-estructura);
-  background: var(--color-fondo);
+  /* Fondo animado premium (Respiración) */
+  background: linear-gradient(-45deg, #F4F6F9, #EAEFF5, #ECE9F2, #F4F6F9);
+  background-size: 400% 400%;
+  animation: respiracionFondo 15s ease infinite;
+}
+
+@keyframes respiracionFondo {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }

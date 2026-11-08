@@ -339,6 +339,13 @@ main { padding-bottom: 2rem; }
   .manual__contenido { border-left: 0; border-top: 1px solid var(--borde); padding: .75rem 0 0; }
 }
 
+/* ============ MODO PROFESIONAL (IA) ============ */
+.config-ia { display: flex; justify-content: flex-end; }
+.btn--texto { border-color: transparent; background: transparent; color: var(--morado-medio); text-decoration: underline; text-underline-offset: 3px; }
+.btn--texto:hover:not(:disabled) { background: transparent; color: var(--color-estructura); }
+.campo__control--ancho { width: 100%; cursor: text; }
+.opcion:disabled, .opcion:disabled:hover { opacity: .6; cursor: progress; transform: none; box-shadow: none; border-color: var(--borde); }
+
 /* ============ RESPONSIVO ============ */
 @media (max-width: 900px) {
   .opciones { grid-template-columns: repeat(2, 1fr); }

@@ -58,10 +58,13 @@ a:hover { color: var(--color-estructura); }
 .cabecera__fila { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: .9rem; }
 .marca { display: flex; align-items: center; gap: .75rem; min-width: 0; }
 .marca__logo {
-  display: grid; place-items: center; flex: none;
-  width: 40px; height: 40px; border-radius: 10px;
-  background: var(--blanco); color: var(--color-estructura);
-  font-weight: 700; font-size: 1.15rem; font-style: italic;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--blanco);
+  object-fit: contain;
+  flex: none;
+  padding: 4px;
 }
 .marca__titulo { font-size: 1.15rem; font-weight: 700; line-height: 1.2; color: var(--blanco); }
 .marca__sub { font-size: .85rem; color: #D6CFE6; }

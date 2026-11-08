@@ -246,7 +246,7 @@ const RADIO_NODO = 22;
 const LARGO_PUNTA = 13;
 const COLOR_ESTRUCTURA = "#25133E";   // morado profundo: líneas, bordes y texto
 const COLOR_ACENTO = "#9F53FF";       // morado vibrante: resaltado de nodos y flecha de guía
-const COLOR_NODO = "#25133E";         // color base de todos los nodos en la pantalla de edición
+const COLOR_NODO = "#7F2BE0";         // color base de todos los nodos en la pantalla de edición
 
 /** Ajusta la resolución interna del canvas a pantallas retina sin cambiar su tamaño en CSS. */
 function prepararLienzo(canvas) {

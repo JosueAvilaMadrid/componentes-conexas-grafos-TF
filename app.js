@@ -50,34 +50,47 @@ function crearGrafoVacio(nodos) {
 }
 
 /** Aristas al azar (0/1) con la diagonal en cero.
- *  Límites por nodo: máximo `maxSalen` aristas que salen y máximo `maxEntran` que entran
- *  (la suma por nodo puede llegar a 6). `densidad` = probabilidad de aceptar una arista candidata. */
+ *  Por nodo: entre `minSalen` y `maxSalen` aristas que salen, y entre `minEntran` y `maxEntran`
+ *  que entran (suma por nodo: mínimo 2, máximo 6). `densidad` = probabilidad de aceptar una
+ *  arista extra. Con n = 1 no hay aristas posibles (no se permiten bucles). */
 function crearGrafoAleatorio(nodos, densidad = 0.5, maxSalen = 3, maxEntran = 3) {
   crearGrafoVacio(nodos);
+  const salen = new Array(n).fill(0);
+  const entran = new Array(n).fill(0);
 
-  // 1) todas las aristas posibles i->j (sin bucles)
+  function agregar(i, j) {
+    matriz[i][j] = 1;
+    salen[i]++;
+    entran[j]++;
+  }
+
+  // 1) BASE: un ciclo que pasa por todos los nodos en orden aleatorio.
+  //    Así cada nodo queda con exactamente 1 que sale y 1 que entra (los mínimos),
+  //    y además todo el grafo queda conectado.
+  if (n >= 2) {
+    const orden = Array.from({ length: n }, (_, k) => k);
+    for (let k = n - 1; k > 0; k--) {               // Fisher-Yates
+      const r = Math.floor(Math.random() * (k + 1));
+      [orden[k], orden[r]] = [orden[r], orden[k]];
+    }
+    for (let k = 0; k < n; k++) agregar(orden[k], orden[(k + 1) % n]);
+  }
+
+  // 2) EXTRAS: aristas candidatas en orden aleatorio, respetando los máximos
   const posibles = [];
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      if (i !== j) posibles.push([i, j]);
+      if (i !== j && matriz[i][j] === 0) posibles.push([i, j]);
     }
   }
-
-  // 2) mezclarlas al azar (Fisher-Yates) para que ningún nodo tenga ventaja
   for (let k = posibles.length - 1; k > 0; k--) {
     const r = Math.floor(Math.random() * (k + 1));
     [posibles[k], posibles[r]] = [posibles[r], posibles[k]];
   }
-
-  // 3) agregar la arista solo si el origen aún puede emitir y el destino aún puede recibir
-  const salen = new Array(n).fill(0);
-  const entran = new Array(n).fill(0);
   for (const [i, j] of posibles) {
     if (Math.random() >= densidad) continue;
     if (salen[i] >= maxSalen || entran[j] >= maxEntran) continue;
-    matriz[i][j] = 1;
-    salen[i]++;
-    entran[j]++;
+    agregar(i, j);
   }
   return { matriz, etiquetas };
 }

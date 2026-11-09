@@ -61,20 +61,33 @@ function crearGrafoVacio(nodos) {
   //return { matriz, etiquetas };
 //}
 /** Aristas al azar (0/1), diagonal en cero. Máximo `maxPorNodo` aristas salientes por nodo. */
+/** Aristas al azar (0/1), diagonal en cero.
+ *  Cada nodo tiene máximo `maxPorNodo` aristas EN TOTAL (entrantes + salientes). */
 function crearGrafoAleatorio(nodos, densidad = 0.5, maxPorNodo = 3) {
   crearGrafoVacio(nodos);
+
+  // 1) todas las aristas posibles i->j (sin bucles)
+  const posibles = [];
   for (let i = 0; i < n; i++) {
-    // 1) candidatos que "ganan" la moneda (igual que antes)
-    const destinos = [];
     for (let j = 0; j < n; j++) {
-      if (i !== j && Math.random() < densidad) destinos.push(j);
+      if (i !== j) posibles.push([i, j]);
     }
-    // 2) mezclar y quedarse con máximo 3
-    for (let k = destinos.length - 1; k > 0; k--) {
-      const r = Math.floor(Math.random() * (k + 1));
-      [destinos[k], destinos[r]] = [destinos[r], destinos[k]];
-    }
-    destinos.slice(0, maxPorNodo).forEach(j => { matriz[i][j] = 1; });
+  }
+
+  // 2) mezclarlas (Fisher-Yates)
+  for (let k = posibles.length - 1; k > 0; k--) {
+    const r = Math.floor(Math.random() * (k + 1));
+    [posibles[k], posibles[r]] = [posibles[r], posibles[k]];
+  }
+
+  // 3) agregar solo si ambos nodos tienen cupo
+  const grado = new Array(n).fill(0);
+  for (const [i, j] of posibles) {
+    if (Math.random() >= densidad) continue;
+    if (grado[i] >= maxPorNodo || grado[j] >= maxPorNodo) continue;
+    matriz[i][j] = 1;
+    grado[i]++;   // sale de i
+    grado[j]++;   // llega a j
   }
   return { matriz, etiquetas };
 }

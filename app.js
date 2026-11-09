@@ -1189,109 +1189,334 @@ function imagenDelGrafo(componentes) {
   return canvas.toDataURL("image/png");
 }
 
-/** Informe completo (todas las etapas + solución) para el PDF, independiente de la etapa visible. */
-function construirInforme(proc) {
+/* ---------- Informe PDF dibujado directamente con jsPDF (texto nítido, una sección por página) ---------- */
+const URL_JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+
+const COLOR_SECCION_PDF = {
+  interpretacion: [46, 108, 182],
+  representacion: [46, 139, 87],
+  calculo: [192, 112, 43],
+  analisis: [111, 66, 193],
+};
+const RGB_UNO = [144, 238, 144];
+const RGB_NUEVO = [255, 184, 77];
+const RGB_DIAGONAL = [158, 203, 255];
+const RGB_BLOQUE = [220, 30, 30];
+const RGB_SUBTITULO = [31, 58, 107];
+const RGB_GRIS = [85, 85, 85];
+
+const hexARgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+/** Las fuentes estándar de jsPDF no tienen flechas ni símbolos matemáticos: se reemplazan por texto equivalente. */
+const aTextoPDF = (s) => String(s)
+  .replace(/→/g, "->").replace(/∞/g, "inf").replace(/≤/g, "<=").replace(/∈/g, "en")
+  .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');
+
+/** Imagen (data URL) del grafo original: todos los nodos del mismo color, con las posiciones del usuario. */
+function imagenDelGrafoOriginal() {
+  const canvas = document.createElement("canvas");
+  const c = prepararLienzo(canvas);
+  const pos = posiciones && posiciones.length === n ? posiciones : posicionesEnCirculo(n);
+  trazarGrafo(c, matriz, etiquetas, pos);
+  return canvas.toDataURL("image/png");
+}
+
+/** Arma el informe completo (todas las etapas + análisis) y devuelve el documento jsPDF. */
+function crearInformePDF(proc) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  doc.setLineHeightFactor(1.4);
+
+  const ANCHO = 210, ALTO = 297, MARGEN = 17, UTIL = ANCHO - 2 * MARGEN, LIMITE = ALTO - 16;
+  const PT = 0.3528;                       // mm por punto tipográfico
   const E = etiquetas;
   const etqOrden = proc.orden.map((i) => E[i]);
-  const fecha = new Date().toLocaleString("es", { dateStyle: "long", timeStyle: "short" });
+  const f = new Date();
+  const dos = (x) => String(x).padStart(2, "0");
+  const fecha = `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()} ${dos(f.getHours())}:${dos(f.getMinutes())}`;
 
-  const estilos = crearElemento("style", {}, `
-    .informe{font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;color:#25133E;background:#fff;line-height:1.45}
-    .informe h1{font-size:20px;margin:0 0 2px}
-    .informe h2{font-size:14px;margin:0 0 3px}
-    .informe p{font-size:11.5px;color:#5B4F72;margin:0 0 6px}
-    .informe .pdf-bloque{margin:0 0 14px;padding-top:4px}
-    .informe .matriz-marco{max-width:calc(var(--cols,5)*34px + 36px)}
-    .informe .celda{font-size:11px}
-    .informe .celda--bloque{box-shadow:none}
-    .informe .res{font-size:13px;margin:0 0 4px;color:#25133E}
-  `);
+  let y = 0;
+  let seccion = null;
+  let primera = true;
 
-  const seccion = (titulo, descripcion, ...contenido) => crearElemento("div", { className: "pdf-bloque" },
-    crearElemento("h2", { texto: titulo }),
-    descripcion ? crearElemento("p", { texto: descripcion }) : "",
-    ...contenido);
-
-  const textoNuevos = (it) => {
-    const lista = it.nuevos.slice(0, 24).map(([i, j, t]) => `${E[i]}→${E[t]}→${E[j]}`).join(", ");
-    return it.nuevos.length > 24 ? `${lista} y ${it.nuevos.length - 24} más` : lista;
+  const fijar = (size, negrita, color) => {
+    doc.setFont("helvetica", negrita ? "bold" : "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(color[0], color[1], color[2]);
   };
 
-  const bloquesBorde = crearMatrizDOM(proc.R_final, etqOrden, etqOrden);
-  proc.bloques.forEach(([a, b]) => {
-    bloquesBorde.querySelectorAll(".celda[data-i]").forEach((celda) => {
-      const i = Number(celda.dataset.i);
-      const j = Number(celda.dataset.j);
-      if (i < a || i > b || j < a || j > b) return;
-      const borde = "2px solid #25133E";
-      if (i === a) celda.style.borderTop = borde;
-      if (i === b) celda.style.borderBottom = borde;
-      if (j === a) celda.style.borderLeft = borde;
-      if (j === b) celda.style.borderRight = borde;
-    });
-  });
+  /* ----- estructura de páginas ----- */
+  const banda = () => {
+    doc.setFillColor(seccion.color[0], seccion.color[1], seccion.color[2]);
+    doc.rect(0, 0, ANCHO, 12, "F");
+    fijar(11, true, [255, 255, 255]);
+    doc.text(aTextoPDF(seccion.nombre), MARGEN, 7.6);
+  };
 
+  const pagina = (nombre, color, titulo) => {
+    if (!primera) doc.addPage();
+    primera = false;
+    seccion = { nombre, color };
+    banda();
+    fijar(18, true, [0, 0, 0]);
+    doc.text(aTextoPDF(titulo), ANCHO / 2, 26, { align: "center" });
+    y = 36;
+  };
+
+  /** Si lo que sigue no cabe, abre una página de continuación con la misma franja. */
+  const asegurar = (alto) => {
+    if (y + alto > LIMITE) {
+      doc.addPage();
+      banda();
+      y = 22;
+    }
+  };
+
+  /* ----- bloques de contenido ----- */
+  const texto = (str, { size = 10.5, color = [0, 0, 0], bold = false, gap = 2, indent = 0 } = {}) => {
+    fijar(size, bold, color);
+    const lineas = doc.splitTextToSize(aTextoPDF(str), UTIL - indent);
+    const alto = lineas.length * size * PT * 1.4;
+    asegurar(alto);
+    fijar(size, bold, color);
+    doc.text(lineas, MARGEN + indent, y + size * PT);
+    y += alto + gap;
+  };
+
+  const subtitulo = (str) => {
+    y += 2;
+    texto(str, { size: 12.5, bold: true, color: RGB_SUBTITULO, gap: 1.5 });
+  };
+
+  const vineta = (str) => {
+    fijar(10.5, false, [0, 0, 0]);
+    const lineas = doc.splitTextToSize(aTextoPDF(str), UTIL - 5);
+    const alto = lineas.length * 10.5 * PT * 1.4;
+    asegurar(alto);
+    fijar(10.5, false, [0, 0, 0]);
+    doc.setFillColor(0, 0, 0);
+    doc.circle(MARGEN + 1.2, y + 2.5, 0.55, "F");
+    doc.text(lineas, MARGEN + 5, y + 10.5 * PT);
+    y += alto + 1.6;
+  };
+
+  /**
+   * Matriz con etiquetas de filas y columnas. opciones: { titulo (centrado), subt (subtítulo a la izquierda), nuevos, diagonal (Set "i,j"), bloques ([[a, b], ...]) }.
+   * Cada celda es un cuadrado con relleno; los bloques se marcan con un borde rojo grueso.
+   */
+  const matriz2 = (M, filas, cols, { titulo = "", subt = "", nuevos = new Set(), diagonal = new Set(), bloques = [] } = {}) => {
+    const m = M.length;
+    const c = M[0].length;
+    let s = Math.min(18, UTIL / (c + 1));
+    s = Math.min(s, (LIMITE - 60) / (m + 1));
+    const alto = (m + 1) * s;
+    asegurar(alto + (titulo ? 10 : 0) + (subt ? 12 : 0) + 2);    // subtítulo y matriz siempre juntos
+
+    if (subt) subtitulo(subt);
+    if (titulo) {
+      fijar(11, true, [0, 0, 0]);
+      doc.text(aTextoPDF(titulo), ANCHO / 2, y + 4, { align: "center" });
+      y += 10;
+    }
+
+    const x0 = (ANCHO - (c + 1) * s) / 2;
+    const fs = Math.max(7, Math.min(13, s * 0.75));
+    const centro = { align: "center", baseline: "middle" };
+
+    fijar(fs, true, [0, 0, 0]);
+    cols.forEach((e, j) => doc.text(aTextoPDF(e), x0 + (j + 1) * s + s / 2, y + s / 2, centro));
+
+    M.forEach((fila, i) => {
+      fijar(fs, true, [0, 0, 0]);
+      doc.text(aTextoPDF(filas[i]), x0 + s / 2, y + (i + 1) * s + s / 2, centro);
+      fila.forEach((v, j) => {
+        const clave = `${i},${j}`;
+        const rgb = nuevos.has(clave) ? RGB_NUEVO : diagonal.has(clave) ? RGB_DIAGONAL : v === 1 ? RGB_UNO : [255, 255, 255];
+        const x = x0 + (j + 1) * s;
+        const yy = y + (i + 1) * s;
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.setDrawColor(128, 128, 128);
+        doc.setLineWidth(0.2);
+        doc.rect(x, yy, s, s, "FD");
+        fijar(fs, false, [0, 0, 0]);
+        doc.text(String(v), x + s / 2, yy + s / 2, centro);
+      });
+    });
+
+    if (bloques.length) {
+      doc.setDrawColor(RGB_BLOQUE[0], RGB_BLOQUE[1], RGB_BLOQUE[2]);
+      doc.setLineWidth(0.9);
+      bloques.forEach(([a, b]) => {
+        const lado = (b - a + 1) * s;
+        doc.rect(x0 + (a + 1) * s, y + (a + 1) * s, lado, lado, "S");
+      });
+      doc.setLineWidth(0.2);
+      doc.setDrawColor(128, 128, 128);
+    }
+    y += alto + 3;
+  };
+
+  const imagen = (url, lado = 120) => {
+    asegurar(lado + 2);
+    doc.addImage(url, "PNG", (ANCHO - lado) / 2, y, lado, lado);
+    y += lado + 3;
+  };
+
+  const nota = (str) => texto(str, { size: 9.5, color: RGB_GRIS, gap: 3 });
+
+  /* ============ 1. INTERPRETACIÓN ============ */
+  const aristas = [];
+  matriz.forEach((fila, i) => fila.forEach((v, j) => { if (v === 1) aristas.push(`${E[i]}->${E[j]}`); }));
+
+  pagina("1. Interpretación", COLOR_SECCION_PDF.interpretacion, "Informe de razonamiento cuantitativo");
+  texto(`Componentes conexas de un grafo dirigido  -  ${fecha}`, { size: 10.5, color: RGB_GRIS, gap: 4 });
+
+  subtitulo("¿De qué trata el problema?");
+  texto(`Se tiene un grafo dirigido con ${n} nodos (${E.join(", ")}) y ${aristas.length} aristas. Cada arista X->Y indica que se puede ir del nodo X hacia el nodo Y. El problema consiste en estudiar cómo están conectados los nodos entre sí.`);
+
+  subtitulo("¿Qué se pide?");
+  texto("Determinar las componentes conexas del grafo, es decir, los subgrafos conexos disjuntos con el mayor número de vértices que se pueden formar a partir del grafo original, e indicar si el grafo es conexo.");
+
+  subtitulo("¿Qué datos se tienen?");
+  vineta(`Cantidad de nodos: n = ${n}.`);
+  vineta(`Nombres de los nodos: ${E.join(", ")}.`);
+  vineta(`Cantidad de aristas: ${aristas.length}.`);
+  vineta(`Aristas (origen -> destino): ${aristas.length ? aristas.join(", ") : "ninguna"}.`);
+
+  subtitulo("¿Qué se utilizará?");
+  vineta("La matriz de adyacencia M del grafo (fila = origen, columna = destino).");
+  vineta("La matriz de caminos M_R(inf), calculada con las potencias de M (producto booleano), para saber qué nodos se alcanzan entre sí.");
+  vineta("El orden de las filas según la cantidad de 1's y los bloques cuadrados diagonales de 1's, que forman las componentes conexas.");
+
+  /* ============ 2. REPRESENTACIÓN ============ */
+  pagina("2. Representación", COLOR_SECCION_PDF.representacion, "Variables, restricciones y matriz");
+  texto("Se definen las variables del problema, las restricciones que cumplen los datos y se representa el grafo con su matriz de adyacencia.", { color: RGB_GRIS, gap: 3 });
+
+  subtitulo("Variables");
+  vineta(`n = ${n}: cantidad de nodos del grafo.`);
+  vineta(`V = {${E.join(", ")}}: conjunto de vértices (nodos).`);
+  vineta(`E: conjunto de aristas dirigidas, pares (origen, destino). Aquí |E| = ${aristas.length}.`);
+  vineta("M = [m_ij]: matriz de adyacencia de n x n; m_ij = 1 si existe la arista i -> j y m_ij = 0 si no existe.");
+  vineta("M^k: potencia k de M con producto booleano; m_ij = 1 si hay un camino de i a j de hasta k pasos.");
+  vineta("M_R(inf): matriz de caminos (la potencia de M que ya no cambia).");
+
+  subtitulo("Restricciones");
+  vineta(`4 <= n <= 12 (en este problema n = ${n}, se cumple).`);
+  vineta("m_ij en {0, 1} para todo i, j.");
+  vineta("El grafo es dirigido: m_ij puede ser distinto de m_ji.");
+  vineta("Todo nodo llega a sí mismo: antes de calcular los caminos se completa la diagonal con 1's (m_ii = 1).");
+  vineta("Los nombres de los nodos son distintos entre sí.");
+  vineta("Dos nodos i y j están en la misma componente conexa si i llega a j y j llega a i.");
+
+  matriz2(matriz, E, E, { subt: "Matriz de adyacencia M (fila = origen, columna = destino)" });
+
+  pagina("2. Representación", COLOR_SECCION_PDF.representacion, "Gráfico del grafo");
+  imagen(imagenDelGrafoOriginal(), 130);
+  nota("Figura 1. Cada flecha va de un nodo origen a un nodo destino. Los colores de las componentes se mostrarán al final, en el análisis.");
+
+  /* ============ 3. CÁLCULO ============ */
   const diagonal = new Set();      // solo los 1's agregados: un bucle ya era 1
   E.forEach((_, i) => { if (matriz[i][i] === 0) diagonal.add(`${i},${i}`); });
-  const raiz = crearElemento("div", { className: "informe" },
-    estilos,
-    crearElemento("div", { className: "pdf-bloque" },
-      crearElemento("h1", { texto: "Componentes conexas de un grafo dirigido" }),
-      crearElemento("p", { texto: `${n} nodos · ${fecha}` })),
-    seccion("Matriz de adyacencia", "Un 1 en la posición (i, j) indica una arista de i hacia j.", crearMatrizDOM(matriz, E, E)),
-    seccion("Paso 1: matriz con diagonal", "Se agrega el valor 1 en toda la diagonal principal (celdas azules).",
-      crearMatrizDOM(proc.M1, E, E, { diagonal })));
 
+  pagina("3. Cálculo", COLOR_SECCION_PDF.calculo, "Paso 1: matriz de adyacencia con diagonal");
+  texto("Se construye la matriz de adyacencia del grafo y se agrega el valor 1 en toda la diagonal principal.", { color: RGB_GRIS, gap: 3 });
+  if (diagonal.size > 0) nota("Los 1's agregados en la diagonal principal se muestran en azul.");
+  matriz2(proc.M1, E, E, { diagonal });
+
+  pagina("3. Cálculo", COLOR_SECCION_PDF.calculo, "Paso 2: matriz de caminos (potencias de M)");
+  texto("Se multiplica (producto booleano) la matriz anterior por la matriz M del Paso 1: hay un 1 en la posición (i, j) si existe un nodo t tal que i llega a t y desde t hay una arista hacia j. Los 1's nuevos se marcan en naranja. Se repite hasta que ya no aparezcan 1's nuevos.", { color: RGB_GRIS, gap: 3 });
   proc.iteraciones.forEach((it) => {
     const nuevos = new Set(it.nuevos.map(([i, j]) => `${i},${j}`));
-    raiz.append(seccion(
-      `Paso 2: M^${it.exponente} = M^${it.exponente - 1} · M`,
-      it.estable
-        ? "Al multiplicar otra vez no aparecen 1's nuevos: ya se encontraron todos los caminos."
-        : `1's nuevos en naranja (origen→intermedio→destino): ${textoNuevos(it)}.`,
-      crearMatrizDOM(it.matriz, E, E, { nuevos })));
+    matriz2(it.matriz, E, E, { titulo: `M^${it.exponente} = M^${it.exponente - 1} · M`, nuevos });
+    nota(textoNuevos(E, it));
   });
 
-  raiz.append(
-    seccion("Paso 2: matriz de caminos M_R∞", "Indica qué nodos son alcanzables desde cada nodo.", crearMatrizDOM(proc.R, E, E)),
-    seccion("Paso 3: filas ordenadas", "Filas ordenadas por cantidad de 1's (de mayor a menor); en empate, el primer 1 más cercano a la primera columna.",
-      crearMatrizDOM(proc.R_filas, etqOrden, E)),
-    seccion("Paso 4: columnas ordenadas y bloques", "Los bloques cuadrados diagonales marcados con borde grueso son las componentes conexas.", bloquesBorde),
-    seccion("Resultado", `Número total de componentes conexas: ${proc.componentes.length}`,
-      ...proc.componentes.map((comp, k) => crearElemento("p", {
-        className: "res",
-        texto: `V${k + 1} = {${comp.map((nodo) => E[nodo - 1]).join(", ")}}`,
-      })),
-      crearElemento("img", {
-        src: imagenDelGrafo(proc.componentes),
-        alt: "Grafo con sus componentes conexas",
-        estilo: "display:block;width:320px;height:320px;margin:8px auto 0;border:1px solid #DDE1E8;border-radius:8px",
-      })));
-  return raiz;
+  pagina("3. Cálculo", COLOR_SECCION_PDF.calculo, "Paso 2: matriz de caminos (resultado)");
+  texto("Es la matriz M_R(inf) que se obtiene cuando al multiplicar ya no aparecen 1's nuevos: indica qué nodos son alcanzables desde cada nodo.", { color: RGB_GRIS, gap: 3 });
+  matriz2(proc.R, E, E);
+  textoAlcance(proc.R, E).split("\n").forEach((linea, k) => texto(linea, { size: 10, gap: 1, indent: k === 0 ? 0 : 3 }));
+
+  pagina("3. Cálculo", COLOR_SECCION_PDF.calculo, "Paso 3: ordenar filas");
+  texto("Se ordenan las filas según la cantidad de 1's que contienen (de mayor a menor). En caso de empate, se prioriza la fila cuyo primer 1 esté más cerca de la primera columna.", { color: RGB_GRIS, gap: 3 });
+  matriz2(proc.R_filas, etqOrden, E);
+  textoCantidades(proc.R, proc.orden, E).split("\n").forEach((linea, k) => texto(linea, { size: 10, gap: 1, indent: k === 0 ? 0 : 3 }));
+
+  pagina("3. Cálculo", COLOR_SECCION_PDF.calculo, "Paso 4: ordenar columnas y formar bloques");
+  texto("Se reordenan las columnas en el mismo orden que las filas. Los bloques cuadrados diagonales formados por 1's (marcados en rojo) son las componentes conexas.", { color: RGB_GRIS, gap: 3 });
+  matriz2(proc.R_final, etqOrden, etqOrden, { bloques: proc.bloques });
+  texto("Bloques diagonales de 1's (marcados en rojo), de arriba hacia abajo:", { size: 10, gap: 1 });
+  proc.bloques.forEach(([a, b], k) => {
+    const nodos = proc.orden.slice(a, b + 1).map((i) => E[i]);
+    texto(`Bloque ${k + 1} = {${nodos.join(", ")}}`, { size: 10, gap: 1, indent: 3 });
+  });
+
+  pagina("3. Cálculo", COLOR_SECCION_PDF.calculo, "Componentes conexas del grafo");
+  imagen(imagenDelGrafo(proc.componentes), 130);
+  nota("Figura 2. Componentes conexas del grafo. Cada componente aparece separada y con su propio color.");
+  proc.componentes.forEach((_, k) => {
+    asegurar(7);
+    const rgb = hexARgb(PALETA_COMPONENTES[k % PALETA_COMPONENTES.length]);
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.setDrawColor(37, 19, 62);
+    doc.setLineWidth(0.4);
+    doc.circle(MARGEN + 2.5, y + 2.3, 2, "FD");
+    fijar(10.5, false, [0, 0, 0]);
+    doc.text(`Componente ${k + 1}`, MARGEN + 7, y + 3.6);
+    y += 7;
+  });
+
+  /* ============ 4. ANÁLISIS ============ */
+  const k = proc.componentes.length;
+  const nombreComp = (comp) => `{${comp.map((nodo) => E[nodo - 1]).join(", ")}}`;
+
+  pagina("4. Análisis", COLOR_SECCION_PDF.analisis, "Análisis y respuesta");
+  texto("Se responde lo que pedía el problema a partir de los cálculos realizados.", { color: RGB_GRIS, gap: 3 });
+
+  subtitulo("Respuesta");
+  texto(`El grafo tiene ${k} componente(s) conexa(s):`);
+  proc.componentes.forEach((comp, idx) => {
+    texto(`V${idx + 1} = ${nombreComp(comp)} (${comp.length} ${comp.length === 1 ? "nodo" : "nodos"})`, { bold: true, indent: 4, gap: 1.5 });
+  });
+  y += 2;
+  texto(k === 1
+    ? `Sí, el grafo es conexo: hay una única componente que contiene a los ${n} nodos, o sea, todos los nodos se alcanzan entre sí.`
+    : `No, el grafo no es conexo: hay ${k} componentes, así que algunos nodos no se alcanzan entre sí.`);
+
+  subtitulo("Conclusión");
+  texto(`Las componentes conexas del grafo son: ${proc.componentes.map((comp, idx) => `V${idx + 1} = ${nombreComp(comp)}`).join(", ")}.`);
+
+  /* ----- numeración de páginas ----- */
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
+    fijar(8.5, false, [130, 130, 130]);
+    doc.text(`Página ${p} de ${total}`, ANCHO / 2, ALTO - 7, { align: "center" });
+  }
+  return doc;
 }
 
 async function descargarPDF() {
-  if (typeof html2pdf === "undefined") {
-    mostrarToast("No se pudo cargar html2pdf. Revisa tu conexión a internet.");
-    return;
-  }
   const boton = $("btn-pdf");
   const textoOriginal = boton.textContent;
   boton.disabled = true;
   boton.textContent = "Generando PDF…";
 
   try {
-    const informe = construirInforme(calcularProcedimiento(matriz));
-    await html2pdf().set({
-      margin: [10, 10, 10, 10],
-      filename: `informe_componentes_${n}nodos.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: ["css", "legacy"], avoid: ".pdf-bloque" },
-    }).from(informe).save();
+    try {
+      await cargarScript(URL_JSPDF);
+    } catch (e) {
+      mostrarToast("No se pudo cargar jsPDF. Revisa tu conexión a internet.");
+      return;
+    }
+    if (!window.jspdf) {
+      mostrarToast("No se pudo cargar jsPDF. Revisa tu conexión a internet.");
+      return;
+    }
+    const doc = crearInformePDF(calcularProcedimiento(matriz));
+    doc.save(`informe_componentes_${n}nodos.pdf`);
     mostrarToast("PDF descargado");
   } catch (e) {
+    console.error(e);
     mostrarToast("No se pudo generar el PDF.");
   } finally {
     boton.disabled = false;
@@ -1589,13 +1814,10 @@ const CONTENIDO_MANUAL = [
       <p>En la pantalla del resultado, el botón <strong>Descargar informe en PDF</strong> arma el informe completo y lo descarga en formato A4 con el nombre <em>informe_componentes_(n)nodos.pdf</em>. El informe incluye siempre todas las etapas, sin importar cuál estés viendo.</p>
       <h3>Contenido del informe</h3>
       <ol>
-        <li>Título, cantidad de nodos y fecha.</li>
-        <li>La matriz de adyacencia.</li>
-        <li>Paso 1: la matriz con la diagonal de 1's.</li>
-        <li>Paso 2: cada potencia (M², M³…) con sus 1's nuevos y la matriz de caminos.</li>
-        <li>Paso 3: las filas ordenadas.</li>
-        <li>Paso 4: las columnas ordenadas con los bloques marcados.</li>
-        <li>Resultado: el número de componentes conexas, la lista de nodos de cada una y el grafo coloreado.</li>
+        <li><strong>1. Interpretación:</strong> de qué trata el problema, qué se pide, los datos (nodos y aristas) y qué se utilizará.</li>
+        <li><strong>2. Representación:</strong> variables, restricciones, la matriz de adyacencia y el gráfico del grafo original.</li>
+        <li><strong>3. Cálculo:</strong> Paso 1 (diagonal), Paso 2 (cada potencia M², M³… y la matriz de caminos), Paso 3 (filas ordenadas) y Paso 4 (columnas ordenadas con los bloques en rojo), más el gráfico de las componentes.</li>
+        <li><strong>4. Análisis:</strong> el número de componentes, los nodos de cada una, si el grafo es conexo y la conclusión.</li>
       </ol>
       <h3>Si no se descarga</h3>
       <p>Revisa tu conexión a internet (la herramienta que arma el PDF se carga desde la web) y que el navegador no esté bloqueando descargas.</p>`,

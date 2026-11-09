@@ -50,17 +50,34 @@ function crearGrafoVacio(nodos) {
 }
 
 /** Aristas al azar (0/1) con la diagonal en cero. `densidad` = probabilidad de un 1 (0.5 como en Python). */
-function crearGrafoAleatorio(nodos, densidad = 0.5) {
+//function crearGrafoAleatorio(nodos, densidad = 0.5) {
+  //crearGrafoVacio(nodos);
+ // for (let i = 0; i < n; i++) {
+   // for (let j = 0; j < n; j++) {
+    //  if (i === j) continue;
+     // matriz[i][j] = Math.random() < densidad ? 1 : 0;
+    //}
+ // }
+  //return { matriz, etiquetas };
+//}
+/** Aristas al azar (0/1), diagonal en cero. Máximo `maxPorNodo` aristas salientes por nodo. */
+function crearGrafoAleatorio(nodos, densidad = 0.5, maxPorNodo = 3) {
   crearGrafoVacio(nodos);
   for (let i = 0; i < n; i++) {
+    // 1) candidatos que "ganan" la moneda (igual que antes)
+    const destinos = [];
     for (let j = 0; j < n; j++) {
-      if (i === j) continue;
-      matriz[i][j] = Math.random() < densidad ? 1 : 0;
+      if (i !== j && Math.random() < densidad) destinos.push(j);
     }
+    // 2) mezclar y quedarse con máximo 3
+    for (let k = destinos.length - 1; k > 0; k--) {
+      const r = Math.floor(Math.random() * (k + 1));
+      [destinos[k], destinos[r]] = [destinos[r], destinos[k]];
+    }
+    destinos.slice(0, maxPorNodo).forEach(j => { matriz[i][j] = 1; });
   }
   return { matriz, etiquetas };
 }
-
 /* ============ 3. PRODUCTO BOOLEANO ============ */
 
 /** C[i][j] = 1 si existe t con A[i][t] = 1 y B[t][j] = 1 (equivale a (A·B) > 0). */

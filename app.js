@@ -834,7 +834,7 @@ inicializarApp();
 /* ============ UTILIDADES ============ */
 const CLAVE_EJERCICIOS = "componentesConexas.ejercicios.v1";
 const URL_QRCODEJS = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual", "modal-confirmacion", "modal-api-key", "modal-aviso"];
+const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual", "modal-confirmacion", "modal-ia"];
 const PALETA_COMPONENTES = [          // color base de cada componente (tonos saturados para el efecto 3D)
   "#3B82F6", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#14B8A6",
   "#EC4899", "#84CC16", "#6366F1", "#F97316", "#0EA5E9", "#A16207",
@@ -1344,6 +1344,74 @@ async function importarDesdeImagenQR(archivo) {
   }
 }
 
+/* ============ 3C. ESCANEAR DIBUJO A MANO CON IA (backend FastAPI local) ============ */
+const URL_API_IA = "http://localhost:8000/api/escanear-grafo-ia";
+const CAMPO_ARCHIVO_IA = "file";   // nombre del parámetro UploadFile del endpoint (confirmarlo con el backend)
+let solicitudIA = 0;               // petición vigente: si el modal se cierra o se reabre, la respuesta tardía se descarta
+
+function abrirModalIA() {
+  solicitudIA++;
+  $("mensaje-ia").textContent = "";
+  $("archivo-ia").value = "";
+  abrirModal("modal-ia");
+}
+
+async function procesarFotoIA(archivo) {
+  const mensaje = $("mensaje-ia");
+  const id = ++solicitudIA;
+  mensaje.textContent = "Procesando imagen con IA...";
+
+  try {
+    const formData = new FormData();
+    formData.append(CAMPO_ARCHIVO_IA, archivo);
+
+    let respuesta;
+    try {
+      respuesta = await fetch(URL_API_IA, { method: "POST", body: formData });
+    } catch (e) {
+      throw new Error("No se pudo conectar con el servidor de IA (localhost:8000). Verifica que esté encendido.");
+    }
+    const datos = await respuesta.json().catch(() => null);
+    if (id !== solicitudIA || $("modal-ia").classList.contains("oculto")) return;   // modal cerrado o reabierto mientras se procesaba
+
+    if (!respuesta.ok) {
+      const detalle = datos && (datos.mensaje || datos.detail);
+      throw new Error(typeof detalle === "string" ? detalle : `El servidor respondió con el error ${respuesta.status}.`);
+    }
+    if (!datos || !datos.confirmacion) {
+      mensaje.textContent = (datos && datos.mensaje) || "La IA no pudo reconocer un grafo en la imagen. Prueba con una foto más nítida y bien iluminada.";
+      return;
+    }
+    if (!Array.isArray(datos.matriz) || !Array.isArray(datos.nodos)) {
+      throw new Error("La respuesta del servidor no tiene el formato esperado.");
+    }
+
+    const grafoNormalizado = normalizarGrafo({
+      matriz: datos.matriz,
+      etiquetas: datos.nodos,
+      posiciones: posicionesEnCirculo(datos.nodos.length),
+    });
+    mensaje.textContent = "";
+    cerrarModal("modal-ia");
+    aplicarGrafo(grafoNormalizado);
+    mostrarToast("Grafo reconocido por la IA. Revísalo antes de ejecutar.");
+  } catch (e) {
+    if (id !== solicitudIA) return;
+    mensaje.textContent = e.message;
+  }
+}
+
+function inicializarEscanerIA() {
+  $("btn-ia").addEventListener("click", abrirModalIA);
+  $("btn-cerrar-ia").addEventListener("click", () => cerrarModal("modal-ia"));
+  $("modal-ia").addEventListener("click", (e) => { if (e.target === $("modal-ia")) cerrarModal("modal-ia"); });
+  $("archivo-ia").addEventListener("change", (e) => {
+    const archivo = e.target.files[0];
+    if (archivo) procesarFotoIA(archivo);
+    e.target.value = "";           // permite volver a elegir el mismo archivo tras un error
+  });
+}
+
 /* ============ 3B. COMPARTIR: GENERAR QR (qrcodejs por CDN, carga diferida) ============ */
 function asegurarModalCompartir() {
   if ($("modal-compartir")) return;
@@ -1699,6 +1767,9 @@ function inicializarAvanzadas() {
     e.target.value = "";
   });
 
+  // Escanear dibujo a mano con IA
+  inicializarEscanerIA();
+
   // Compartir QR (botón de la pantalla de resultados)
   $("btn-compartir-qr").addEventListener("click", abrirModalCompartirQR);
 
@@ -1726,226 +1797,6 @@ function inicializarAvanzadas() {
 }
 
 inicializarAvanzadas();
-
-
-/* ==========================================================================
-   VISIÓN ARTIFICIAL · escanear una imagen con Gemini (Modo Profesional)
-   La API Key la pone el usuario y vive solo en su localStorage (no hay backend).
-   ========================================================================== */
-
-const CLAVE_API_GEMINI = "gemini_api_key";
-// gemini-1.5-flash ya no existe en la API (Google lo apagó el 29-sep-2025). Si este modelo se retira, cambia solo esta línea.
-const MODELO_GEMINI = "gemini-3.8-flash";
-const urlGemini = (clave) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${MODELO_GEMINI}:generateContent?key=${encodeURIComponent(clave)}`;
-const TAMANO_MAX_IMAGEN_IA = 10 * 1024 * 1024;   // 10 MB (la petición completa admite ~20 MB y Base64 pesa un tercio más)
-const TIEMPO_MAX_IA_MS = 60000;
-const TEXTO_BTN_IA = $("btn-ia-imagen").querySelector(".opcion__titulo").textContent;
-
-const PROMPT_IA = `Eres un experto en Teoría de Grafos. Analiza esta imagen (puede ser un grafo dirigido dibujado o una matriz) y extrae sus datos. REGLA ESTRICTA: GrafoLab solo soporta entre 4 y 12 nodos. Si detectas menos de 4 o más de 12 nodos, devuelve EXACTAMENTE: {"error": "El grafo debe tener entre 4 y 12 nodos"}. Si cumple, devuelve EXACTAMENTE: {"error": null, "matriz": [[0,1...],...], "coordenadas": [{"x": 0.2, "y": 0.8}, ...]}. Las coordenadas 'x' e 'y' deben ser decimales entre 0.1 y 0.9. Si la imagen es una matriz, inventa coordenadas circulares. NO devuelvas texto, markdown, ni explicaciones, SOLO EL JSON VÁLIDO.`;
-
-let abrirSelectorTrasGuardar = false;   // true si el modal de la clave se abrió desde «Escanear imagen con IA»
-
-/* ---------- Avisos y estado del botón ---------- */
-/** Aviso en modal propio (sustituye a window.alert). */
-function mostrarAviso(titulo, mensaje) {
-  $("t-modal-aviso").textContent = titulo;
-  $("texto-aviso").textContent = mensaje;
-  abrirModal("modal-aviso");
-}
-
-function establecerCargandoIA(cargando) {
-  const boton = $("btn-ia-imagen");
-  boton.querySelector(".opcion__titulo").textContent = cargando ? "Analizando imagen..." : TEXTO_BTN_IA;
-  boton.disabled = cargando;
-  boton.setAttribute("aria-busy", String(cargando));
-}
-
-/* ---------- API Key ---------- */
-function leerApiKey() {
-  try { return (localStorage.getItem(CLAVE_API_GEMINI) || "").trim(); } catch (e) { return ""; }
-}
-
-function mostrarErrorApiKey(texto) {
-  const error = $("error-api-key");
-  error.textContent = texto;
-  error.classList.toggle("oculto", !texto);
-}
-
-function abrirModalApiKey(continuarConEscaneo = false) {
-  abrirSelectorTrasGuardar = continuarConEscaneo;
-  $("input-api-key").value = "";
-  mostrarErrorApiKey("");
-  abrirModal("modal-api-key");
-}
-
-function cerrarModalApiKey() {
-  abrirSelectorTrasGuardar = false;
-  $("input-api-key").value = "";
-  cerrarModal("modal-api-key");
-}
-
-function guardarApiKey() {
-  const valor = $("input-api-key").value.trim();
-  if (!valor) {
-    mostrarErrorApiKey("Escribe tu clave de Gemini para continuar.");
-    return;
-  }
-  try {
-    localStorage.setItem(CLAVE_API_GEMINI, valor);
-  } catch (e) {
-    mostrarErrorApiKey("El navegador bloqueó el almacenamiento local: no se pudo guardar la clave.");
-    return;
-  }
-  const continuar = abrirSelectorTrasGuardar;
-  cerrarModalApiKey();
-  mostrarToast("API Key guardada");
-  if (continuar) $("input-imagen-ia").click();      // venía de «Escanear imagen con IA»: sigue con la imagen
-}
-
-/* ---------- Flujo de escaneo ---------- */
-function alPulsarEscanearIA() {
-  if (!leerApiKey()) {
-    abrirModalApiKey(true);
-    return;
-  }
-  $("input-imagen-ia").click();
-}
-
-function alElegirImagenIA(e) {
-  const archivo = e.target.files[0];
-  e.target.value = "";                               // permite elegir de nuevo el mismo archivo
-  if (!archivo) return;
-  if (!/^image\/(jpeg|png)$/.test(archivo.type)) {
-    mostrarAviso("Formato no compatible", "Sube una imagen JPG o PNG.");
-    return;
-  }
-  if (archivo.size > TAMANO_MAX_IMAGEN_IA) {
-    mostrarAviso("Imagen demasiado grande", "La imagen pesa más de 10 MB. Reduce su tamaño e inténtalo de nuevo.");
-    return;
-  }
-
-  establecerCargandoIA(true);
-  const lector = new FileReader();
-  lector.onload = () => procesarImagenConIA(String(lector.result));
-  lector.onerror = () => {
-    establecerCargandoIA(false);
-    mostrarAviso("No se pudo leer la imagen", "El navegador no pudo leer el archivo. Prueba con otra imagen.");
-  };
-  lector.readAsDataURL(archivo);
-}
-
-/* ---------- Conexión con Gemini ---------- */
-function mensajeErrorGemini(estado, detalle) {
-  if (estado === 400 && /api key/i.test(detalle)) return "La API Key no es válida. Revísala en «Configurar API Key».";
-  if (estado === 400) return `Gemini rechazó la solicitud: ${detalle}`;
-  if (estado === 401 || estado === 403) return "Gemini no autorizó la clave. Revisa que sea correcta y que tenga permiso para usar la API (puedes cambiarla en «Configurar API Key»).";
-  if (estado === 404) return `El modelo «${MODELO_GEMINI}» ya no está disponible en Gemini. Actualiza MODELO_GEMINI en app.js.`;
-  if (estado === 429) return "Se alcanzó el límite de uso de tu clave de Gemini. Espera un momento e inténtalo de nuevo.";
-  if (estado >= 500) return "Los servidores de Gemini no respondieron bien. Inténtalo de nuevo en un momento.";
-  return `Gemini devolvió el error ${estado}: ${detalle}`;
-}
-
-/** Convierte el texto de la IA en un grafo normalizado ({ n, matriz, etiquetas, posiciones }) o lanza Error legible. */
-function interpretarRespuestaIA(texto) {
-  const invalido = "La IA no devolvió un resultado válido. Prueba con una imagen más clara.";
-  const limpio = texto.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");   // por si envuelve el JSON en Markdown
-  const ini = limpio.indexOf("{");
-  const fin = limpio.lastIndexOf("}");
-  if (ini < 0 || fin <= ini) throw new Error(invalido);
-
-  let json;
-  try { json = JSON.parse(limpio.slice(ini, fin + 1)); } catch (e) { throw new Error(invalido); }
-  if (json.error) throw new Error(String(json.error));
-
-  const M = json.matriz;
-  if (!Array.isArray(M) || !M.every(Array.isArray)) throw new Error("La IA no encontró una matriz de adyacencia en la imagen.");
-  const matrizIA = M.map((fila) => fila.map((v) => (Number(v) > 0 ? 1 : 0)));
-
-  // Coordenadas fraccionarias [0, 1]: es el mismo formato de `posiciones` (el lienzo las multiplica por LADO al dibujar)
-  const coords = Array.isArray(json.coordenadas) ? json.coordenadas : [];
-  let posiciones = coords.length === matrizIA.length && coords.every((c) => c && Number.isFinite(parseFloat(c.x)) && Number.isFinite(parseFloat(c.y)))
-    ? coords.map((c) => [parseFloat(c.x), parseFloat(c.y)])
-    : null;
-  // Si dos nodos quedarían encimados, es mejor el círculo por defecto
-  if (posiciones && posiciones.some((p, i) => posiciones.some((q, j) => j > i && Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.07))) posiciones = null;
-
-  return normalizarGrafo({ matriz: matrizIA, posiciones });   // valida 4–12 nodos, matriz cuadrada y 0/1; sin posiciones usa el círculo
-}
-
-/** Recibe la imagen como data URL Base64, la analiza con Gemini y abre el grafo en la pantalla de edición. */
-async function procesarImagenConIA(base64) {
-  const controlador = new AbortController();
-  const temporizador = setTimeout(() => controlador.abort(), TIEMPO_MAX_IA_MS);
-  try {
-    const apiKey = leerApiKey();
-    if (!apiKey) throw new Error("No hay una API Key guardada. Configúrala en «Configurar API Key» e inténtalo de nuevo.");
-
-    const prefijo = /^data:(image\/[\w.+-]+);base64,/i.exec(base64);
-    const mimeType = prefijo ? prefijo[1] : "image/jpeg";
-    const datos = prefijo ? base64.slice(prefijo[0].length) : base64;
-
-    let respuesta;
-    try {
-      respuesta = await fetch(urlGemini(apiKey), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controlador.signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ inlineData: { mimeType, data: datos } }, { text: PROMPT_IA }] }],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
-      });
-    } catch (e) {
-      throw new Error(e.name === "AbortError"
-        ? "Gemini tardó demasiado en responder. Inténtalo de nuevo."
-        : "No se pudo conectar con Gemini. Revisa tu conexión a internet.");
-    }
-
-    if (!respuesta.ok) {
-      let detalle = respuesta.statusText;
-      try { detalle = (await respuesta.json()).error.message || detalle; } catch (e) { /* sin cuerpo JSON */ }
-      throw new Error(mensajeErrorGemini(respuesta.status, detalle));
-    }
-
-    const cuerpo = await respuesta.json();
-    const partes = (cuerpo.candidates && cuerpo.candidates[0] && cuerpo.candidates[0].content && cuerpo.candidates[0].content.parts) || [];
-    const texto = partes.filter((p) => p.text && !p.thought).map((p) => p.text).join("");
-    if (!texto.trim()) {
-      throw new Error(cuerpo.promptFeedback && cuerpo.promptFeedback.blockReason
-        ? "Gemini bloqueó la imagen por sus filtros de seguridad."
-        : "Gemini no devolvió ninguna respuesta. Prueba con otra imagen.");
-    }
-
-    const grafo = interpretarRespuestaIA(texto);
-    if ($("pantalla-inicio").classList.contains("oculto")) {      // el usuario ya salió de la Pantalla 1: no se pisa su trabajo
-      mostrarToast("Se descartó el resultado de la IA porque ya saliste de la pantalla de inicio.");
-      return;
-    }
-    aplicarGrafo(grafo);                                          // sobrescribe n, matriz, etiquetas y posiciones y abre la edición
-    mostrarToast(`Grafo de ${grafo.n} nodos importado desde la imagen`);
-  } catch (e) {
-    mostrarAviso("No se pudo analizar la imagen", e.message || "Ocurrió un error inesperado.");
-  } finally {
-    clearTimeout(temporizador);
-    establecerCargandoIA(false);
-  }
-}
-
-function inicializarVisionIA() {
-  $("btn-ia-imagen").addEventListener("click", alPulsarEscanearIA);
-  $("input-imagen-ia").addEventListener("change", alElegirImagenIA);
-  $("btn-config-ia").addEventListener("click", () => abrirModalApiKey(false));
-  $("btn-api-guardar").addEventListener("click", guardarApiKey);
-  $("btn-api-cancelar").addEventListener("click", cerrarModalApiKey);
-  $("input-api-key").addEventListener("keydown", (e) => { if (e.key === "Enter") guardarApiKey(); });
-  $("btn-aviso-cerrar").addEventListener("click", () => cerrarModal("modal-aviso"));
-  ["modal-api-key", "modal-aviso"].forEach((id) => {
-    $(id).addEventListener("click", (e) => { if (e.target === $(id)) cerrarModal(id); });
-  });
-}
-
-inicializarVisionIA();
 
 
 /* ==========================================================================

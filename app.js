@@ -834,7 +834,7 @@ inicializarApp();
 /* ============ UTILIDADES ============ */
 const CLAVE_EJERCICIOS = "componentesConexas.ejercicios.v1";
 const URL_QRCODEJS = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual", "modal-confirmacion", "modal-ia"];
+const IDS_MODALES = ["modal-qr", "modal-guardados", "modal-compartir", "modal-manual", "modal-confirmacion"];
 const PALETA_COMPONENTES = [          // color base de cada componente (tonos saturados para el efecto 3D)
   "#3B82F6", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#14B8A6",
   "#EC4899", "#84CC16", "#6366F1", "#F97316", "#0EA5E9", "#A16207",
@@ -1344,74 +1344,6 @@ async function importarDesdeImagenQR(archivo) {
   }
 }
 
-/* ============ 3C. ESCANEAR DIBUJO A MANO CON IA (backend FastAPI local) ============ */
-const URL_API_IA = "http://localhost:8000/api/escanear-grafo-ia";
-const CAMPO_ARCHIVO_IA = "file";   // nombre del parámetro UploadFile del endpoint (confirmarlo con el backend)
-let solicitudIA = 0;               // petición vigente: si el modal se cierra o se reabre, la respuesta tardía se descarta
-
-function abrirModalIA() {
-  solicitudIA++;
-  $("mensaje-ia").textContent = "";
-  $("archivo-ia").value = "";
-  abrirModal("modal-ia");
-}
-
-async function procesarFotoIA(archivo) {
-  const mensaje = $("mensaje-ia");
-  const id = ++solicitudIA;
-  mensaje.textContent = "Procesando imagen con IA...";
-
-  try {
-    const formData = new FormData();
-    formData.append(CAMPO_ARCHIVO_IA, archivo);
-
-    let respuesta;
-    try {
-      respuesta = await fetch(URL_API_IA, { method: "POST", body: formData });
-    } catch (e) {
-      throw new Error("No se pudo conectar con el servidor de IA (localhost:8000). Verifica que esté encendido.");
-    }
-    const datos = await respuesta.json().catch(() => null);
-    if (id !== solicitudIA || $("modal-ia").classList.contains("oculto")) return;   // modal cerrado o reabierto mientras se procesaba
-
-    if (!respuesta.ok) {
-      const detalle = datos && (datos.mensaje || datos.detail);
-      throw new Error(typeof detalle === "string" ? detalle : `El servidor respondió con el error ${respuesta.status}.`);
-    }
-    if (!datos || !datos.confirmacion) {
-      mensaje.textContent = (datos && datos.mensaje) || "La IA no pudo reconocer un grafo en la imagen. Prueba con una foto más nítida y bien iluminada.";
-      return;
-    }
-    if (!Array.isArray(datos.matriz) || !Array.isArray(datos.nodos)) {
-      throw new Error("La respuesta del servidor no tiene el formato esperado.");
-    }
-
-    const grafoNormalizado = normalizarGrafo({
-      matriz: datos.matriz,
-      etiquetas: datos.nodos,
-      posiciones: posicionesEnCirculo(datos.nodos.length),
-    });
-    mensaje.textContent = "";
-    cerrarModal("modal-ia");
-    aplicarGrafo(grafoNormalizado);
-    mostrarToast("Grafo reconocido por la IA. Revísalo antes de ejecutar.");
-  } catch (e) {
-    if (id !== solicitudIA) return;
-    mensaje.textContent = e.message;
-  }
-}
-
-function inicializarEscanerIA() {
-  $("btn-ia").addEventListener("click", abrirModalIA);
-  $("btn-cerrar-ia").addEventListener("click", () => cerrarModal("modal-ia"));
-  $("modal-ia").addEventListener("click", (e) => { if (e.target === $("modal-ia")) cerrarModal("modal-ia"); });
-  $("archivo-ia").addEventListener("change", (e) => {
-    const archivo = e.target.files[0];
-    if (archivo) procesarFotoIA(archivo);
-    e.target.value = "";           // permite volver a elegir el mismo archivo tras un error
-  });
-}
-
 /* ============ 3B. COMPARTIR: GENERAR QR (qrcodejs por CDN, carga diferida) ============ */
 function asegurarModalCompartir() {
   if ($("modal-compartir")) return;
@@ -1766,9 +1698,6 @@ function inicializarAvanzadas() {
     if (archivo) importarDesdeImagenQR(archivo);
     e.target.value = "";
   });
-
-  // Escanear dibujo a mano con IA
-  inicializarEscanerIA();
 
   // Compartir QR (botón de la pantalla de resultados)
   $("btn-compartir-qr").addEventListener("click", abrirModalCompartirQR);

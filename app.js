@@ -49,21 +49,10 @@ function crearGrafoVacio(nodos) {
   return { matriz, etiquetas };
 }
 
-/** Aristas al azar (0/1) con la diagonal en cero. `densidad` = probabilidad de un 1 (0.5 como en Python). */
-//function crearGrafoAleatorio(nodos, densidad = 0.5) {
-  //crearGrafoVacio(nodos);
- // for (let i = 0; i < n; i++) {
-   // for (let j = 0; j < n; j++) {
-    //  if (i === j) continue;
-     // matriz[i][j] = Math.random() < densidad ? 1 : 0;
-    //}
- // }
-  //return { matriz, etiquetas };
-//}
-/** Aristas al azar (0/1), diagonal en cero. Máximo `maxPorNodo` aristas salientes por nodo. */
-/** Aristas al azar (0/1), diagonal en cero.
- *  Cada nodo tiene máximo `maxPorNodo` aristas EN TOTAL (entrantes + salientes). */
-function crearGrafoAleatorio(nodos, densidad = 0.5, maxPorNodo = 3) {
+/** Aristas al azar (0/1) con la diagonal en cero.
+ *  Límites por nodo: máximo `maxSalen` aristas que salen y máximo `maxEntran` que entran
+ *  (la suma por nodo puede llegar a 6). `densidad` = probabilidad de aceptar una arista candidata. */
+function crearGrafoAleatorio(nodos, densidad = 0.5, maxSalen = 3, maxEntran = 3) {
   crearGrafoVacio(nodos);
 
   // 1) todas las aristas posibles i->j (sin bucles)
@@ -74,23 +63,25 @@ function crearGrafoAleatorio(nodos, densidad = 0.5, maxPorNodo = 3) {
     }
   }
 
-  // 2) mezclarlas (Fisher-Yates)
+  // 2) mezclarlas al azar (Fisher-Yates) para que ningún nodo tenga ventaja
   for (let k = posibles.length - 1; k > 0; k--) {
     const r = Math.floor(Math.random() * (k + 1));
     [posibles[k], posibles[r]] = [posibles[r], posibles[k]];
   }
 
-  // 3) agregar solo si ambos nodos tienen cupo
-  const grado = new Array(n).fill(0);
+  // 3) agregar la arista solo si el origen aún puede emitir y el destino aún puede recibir
+  const salen = new Array(n).fill(0);
+  const entran = new Array(n).fill(0);
   for (const [i, j] of posibles) {
     if (Math.random() >= densidad) continue;
-    if (grado[i] >= maxPorNodo || grado[j] >= maxPorNodo) continue;
+    if (salen[i] >= maxSalen || entran[j] >= maxEntran) continue;
     matriz[i][j] = 1;
-    grado[i]++;   // sale de i
-    grado[j]++;   // llega a j
+    salen[i]++;
+    entran[j]++;
   }
   return { matriz, etiquetas };
 }
+
 /* ============ 3. PRODUCTO BOOLEANO ============ */
 
 /** C[i][j] = 1 si existe t con A[i][t] = 1 y B[t][j] = 1 (equivale a (A·B) > 0). */

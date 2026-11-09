@@ -94,14 +94,6 @@
           <span class="opcion__titulo">Manual</span>
           <span class="opcion__texto">Tú defines cada conexión</span>
         </button>
-        <button type="button" class="opcion" id="btn-ia">
-          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-            <path d="M12 6v12M6 12h12"/>
-          </svg>
-          <span class="opcion__titulo">Escanear IA</span>
-          <span class="opcion__texto">Foto de un dibujo a mano</span>
-        </button>
       </div>
     </article>
 
@@ -352,19 +344,6 @@
     <div class="controles">
       <button type="button" class="btn btn--primario" id="btn-confirmar-aceptar">Aceptar</button>
       <button type="button" class="btn btn--secundario" id="btn-confirmar-cancelar">Cancelar</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== MODAL: ESCANEAR DIBUJO A MANO (IA) ===== -->
-<div id="modal-ia" class="modal oculto" role="dialog" aria-modal="true" aria-labelledby="t-modal-ia">
-  <div class="modal__caja">
-    <h3 id="t-modal-ia" class="card__subtitulo">Escanear dibujo a mano (IA)</h3>
-    <p class="card__texto">Toma una foto limpia de tu cuaderno o sube una imagen con el grafo dibujado.</p>
-    <input type="file" id="archivo-ia" accept="image/*" capture="environment" class="campo-archivo" style="margin-top: 1rem;">
-    <p id="mensaje-ia" class="nota" role="status"></p>
-    <div class="controles">
-      <button type="button" class="btn btn--secundario" id="btn-cerrar-ia">Cerrar</button>
     </div>
   </div>
 </div>

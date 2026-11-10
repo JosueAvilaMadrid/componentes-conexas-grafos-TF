@@ -355,6 +355,36 @@
   </div>
 </div>
 
+<!-- ===== DIALOG: GRAFO ALEATORIO POR COMPONENTES ===== -->
+<dialog id="dialogo-aleatorio" class="dialogo" aria-labelledby="t-dialogo-aleatorio">
+  <form id="form-aleatorio" class="dialogo__caja" novalidate>
+    <h3 id="t-dialogo-aleatorio" class="card__subtitulo">¿Cuántas componentes conexas deseas?</h3>
+
+    <!-- Solo se muestra cuando se abre desde la Pantalla 2 -->
+    <p id="aviso-reemplazo" class="mensaje-error oculto">El grafo actual se reemplazará.</p>
+
+    <p class="card__texto">El grafo tendrá <strong id="nodos-aleatorio">6</strong> nodos. Elige un número de componentes entre 1 y <strong id="max-componentes">6</strong>.</p>
+
+    <div class="opciones-nombres" style="align-items:flex-end">
+      <label class="campo">
+        <span class="campo__etiqueta">Componentes</span>
+        <input type="number" id="input-componentes" class="campo__control campo__control--corto"
+               style="width:5.5rem" min="1" max="6" value="1" inputmode="numeric">
+      </label>
+      <label class="casilla">
+        <input type="checkbox" id="chk-azar">
+        <span>Cantidad al azar</span>
+      </label>
+    </div>
+
+    <p id="error-aleatorio" class="mensaje-error oculto" role="alert"></p>
+
+    <div class="controles">
+      <button type="submit" class="btn btn--primario" id="btn-aleatorio-generar">Generar</button>
+      <button type="button" class="btn btn--secundario" id="btn-aleatorio-cancelar">Cancelar</button>
+    </div>
+  </form>
+</dialog>  
 <div id="toast" class="toast oculto" role="status" aria-live="polite"></div>
 
 <!-- ===== SCRIPTS (solo CDN, versiones globales) ===== -->

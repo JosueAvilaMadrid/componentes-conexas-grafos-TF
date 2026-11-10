@@ -805,9 +805,9 @@ function limpiarGrafo() {
 
 /** Nueva matriz aleatoria con la misma cantidad de nodos; conserva posiciones y nombres. */
 function regenerarGrafo() {
-  const posicionesPrevias = posiciones;
-   crearGrafoAleatorio(n);
-  if (posicionesPrevias && posicionesPrevias.length === n) posiciones = posicionesPrevias;
+  const etiquetasPrevias = etiquetas;
+  crearGrafoAleatorio(n);
+  etiquetas = etiquetasPrevias;
   modoConstruccion = "aleatorio";
   actualizarTextoModo();
   renderizarMatriz();

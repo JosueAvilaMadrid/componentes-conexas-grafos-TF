@@ -37,7 +37,47 @@ function posicionesEnCirculo(nodos) {
   });
 }
 
-/* ============ 2. CONSTRUCCIÓN DEL GRAFO ============ */
+/**
+ * Posiciones aleatorias con anti-colisión.
+ * Devuelve [[x, y], ...] como fracciones en [0, 1] (mismo formato que posicionesEnCirculo).
+ *  - Distancia mínima entre centros: 90 px.
+ *  - Margen a los 4 bordes: radioNodo + 30 px.
+ *  - Failsafe: tras 2000 intentos fallidos con un nodo, la distancia mínima se relaja un 10 %
+ *    y se vuelve a intentar, hasta que el nodo encaje.
+ */
+function posicionesAleatorias(n, canvasWidth, canvasHeight, radioNodo) {
+  const DISTANCIA_MINIMA = 90;
+  const MAX_INTENTOS = 2000;
+  const FACTOR_RELAJACION = 0.9;
+
+  const margen = radioNodo + 30;
+  const anchoUtil = Math.max(0, canvasWidth - 2 * margen);
+  const altoUtil = Math.max(0, canvasHeight - 2 * margen);
+
+  const puntos = [];
+  let distanciaMin = DISTANCIA_MINIMA;
+  let intentos = 0;
+
+  while (puntos.length < n) {
+    const x = margen + Math.random() * anchoUtil;
+    const y = margen + Math.random() * altoUtil;
+
+    // Distancia euclidiana contra todos los nodos ya validados
+    const libre = puntos.every(([px, py]) => Math.hypot(x - px, y - py) >= distanciaMin);
+
+    if (libre) {
+      puntos.push([x, y]);
+      intentos = 0;                               // el siguiente nodo empieza con intentos frescos
+    } else if (++intentos >= MAX_INTENTOS) {
+      distanciaMin *= FACTOR_RELAJACION;          // no hay espacio: se relaja la separación
+      if (distanciaMin < 1) distanciaMin = 0;     // garantiza que el bucle siempre termina
+      intentos = 0;
+    }
+  }
+
+  return puntos.map(([x, y]) => [x / canvasWidth, y / canvasHeight]);
+}
+/* == 2. CONSTRUCCIÓN DEL GRAFO == */
 
 /** Matriz de ceros y etiquetas "1", "2", ... Actualiza el estado global. */
 function crearGrafoVacio(nodos) {
@@ -45,7 +85,7 @@ function crearGrafoVacio(nodos) {
   n = nodos;
   matriz = Array.from({ length: n }, () => new Array(n).fill(0));
   etiquetas = Array.from({ length: n }, (_, i) => String(i + 1));
-  posiciones = posicionesEnCirculo(n);
+  posiciones = posicionesAleatorias(n, LADO, LADO, RADIO_NODO);
   return { matriz, etiquetas };
 }
 
@@ -95,7 +135,7 @@ function crearGrafoAleatorio(nodos, densidad = 0.5, maxSalen = 3, maxEntran = 3)
   return { matriz, etiquetas };
 }
 
-/* ============ 3. PRODUCTO BOOLEANO ============ */
+/* == 3. PRODUCTO BOOLEANO ============ */
 
 /** C[i][j] = 1 si existe t con A[i][t] = 1 y B[t][j] = 1 (equivale a (A·B) > 0). */
 function productoBooleano(A, B) {
@@ -766,10 +806,8 @@ function limpiarGrafo() {
 /** Nueva matriz aleatoria con la misma cantidad de nodos; conserva posiciones y nombres. */
 function regenerarGrafo() {
   const posicionesPrevias = posiciones;
-  const etiquetasPrevias = etiquetas;
-  crearGrafoAleatorio(n);
+   crearGrafoAleatorio(n);
   if (posicionesPrevias && posicionesPrevias.length === n) posiciones = posicionesPrevias;
-  etiquetas = etiquetasPrevias;
   modoConstruccion = "aleatorio";
   actualizarTextoModo();
   renderizarMatriz();

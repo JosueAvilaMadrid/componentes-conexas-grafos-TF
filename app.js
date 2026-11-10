@@ -77,7 +77,8 @@ function posicionesAleatorias(n, canvasWidth, canvasHeight, radioNodo) {
 
   return puntos.map(([x, y]) => [x / canvasWidth, y / canvasHeight]);
 }
-/* == 2. CONSTRUCCIÓN DEL GRAFO == */
+
+/* ============ 2. CONSTRUCCIÓN DEL GRAFO ============ */
 
 /** Matriz de ceros y etiquetas "1", "2", ... Actualiza el estado global. */
 function crearGrafoVacio(nodos) {
@@ -85,7 +86,7 @@ function crearGrafoVacio(nodos) {
   n = nodos;
   matriz = Array.from({ length: n }, () => new Array(n).fill(0));
   etiquetas = Array.from({ length: n }, (_, i) => String(i + 1));
-  posiciones = posicionesAleatorias(n, LADO, LADO, RADIO_NODO);
+  posiciones = posicionesAleatorias(n, LADO, LADO, RADIO_NODO);   // antes: posicionesEnCirculo(n)
   return { matriz, etiquetas };
 }
 
@@ -135,7 +136,67 @@ function crearGrafoAleatorio(nodos, densidad = 0.5, maxSalen = 3, maxEntran = 3)
   return { matriz, etiquetas };
 }
 
-/* == 3. PRODUCTO BOOLEANO ============ */
+/**
+ * Matriz de adyacencia con EXACTAMENTE `numComponentes` componentes conexas (fuertemente conexas).
+ * A) Partición: nodos mezclados y cortados en C grupos, cada uno con al menos 1 nodo.
+ * B) Mínimo: anillo cerrado dentro de cada grupo (o un bucle si el grupo tiene 1 nodo),
+ *    así todo nodo queda con 1 que entra y 1 que sale.
+ * C) Relleno: aristas extra solo dentro del mismo grupo, con salidas < 3 y entradas < 3.
+ * Devuelve la matriz; no toca el estado global.
+ */
+function generarMatrizPorComponentes(nodosTotales, numComponentes, esAzar) {
+  const N = nodosTotales;
+  const MAX_GRADO = 3;
+  const C = esAzar
+    ? 1 + Math.floor(Math.random() * N)
+    : Math.min(N, Math.max(1, Math.round(numComponentes)));
+
+  const mezclar = (arreglo) => {                       // Fisher-Yates
+    for (let k = arreglo.length - 1; k > 0; k--) {
+      const r = Math.floor(Math.random() * (k + 1));
+      [arreglo[k], arreglo[r]] = [arreglo[r], arreglo[k]];
+    }
+    return arreglo;
+  };
+
+  // A) Partición en C grupos no vacíos: se eligen C-1 puntos de corte distintos entre 1 y N-1
+  const nodos = mezclar(Array.from({ length: N }, (_, i) => i));
+  const cortes = mezclar(Array.from({ length: N - 1 }, (_, i) => i + 1)).slice(0, C - 1).sort((a, b) => a - b);
+  const limites = [0, ...cortes, N];
+  const grupos = [];
+  for (let g = 0; g < C; g++) grupos.push(nodos.slice(limites[g], limites[g + 1]));
+
+  const M = Array.from({ length: N }, () => new Array(N).fill(0));
+  const salen = new Array(N).fill(0);
+  const entran = new Array(N).fill(0);
+  const agregar = (i, j) => { M[i][j] = 1; salen[i]++; entran[j]++; };
+
+  // B) Garantía del mínimo: anillo A->B->C->A (un solo nodo: bucle A->A)
+  grupos.forEach((grupo) => {
+    if (grupo.length === 1) agregar(grupo[0], grupo[0]);
+    else grupo.forEach((nodo, k) => agregar(nodo, grupo[(k + 1) % grupo.length]));
+  });
+
+  // C) Relleno seguro: extras solo dentro del grupo, respetando el máximo de 3 por fila y por columna
+  grupos.forEach((grupo) => {
+    const candidatas = [];
+    grupo.forEach((i) => grupo.forEach((j) => { if (i !== j && M[i][j] === 0) candidatas.push([i, j]); }));
+    mezclar(candidatas);
+
+    const objetivo = Math.floor(Math.random() * (Math.min(candidatas.length, 2 * grupo.length) + 1));
+    let puestas = 0;
+    for (const [i, j] of candidatas) {
+      if (puestas >= objetivo) break;
+      if (salen[i] >= MAX_GRADO || entran[j] >= MAX_GRADO) continue;
+      agregar(i, j);
+      puestas++;
+    }
+  });
+
+  return M;
+}
+
+/* ============ 3. PRODUCTO BOOLEANO ============ */
 
 /** C[i][j] = 1 si existe t con A[i][t] = 1 y B[t][j] = 1 (equivale a (A·B) > 0). */
 function productoBooleano(A, B) {
@@ -444,7 +505,7 @@ function crearMatrizDOM(M, etqFilas, etqColumnas, opciones = {}) {
 function renderizarMatriz() {
   $("contenedor-matriz").replaceChildren(crearMatrizDOM(matriz, etiquetas, etiquetas, { editable: modoEdicionActivo }));
   actualizarSelectAnalisis();      // el selector de análisis siempre refleja los nodos y nombres actuales
-  actualizarDensidad(matriz, n);   // NUEVO: la densidad se recalcula con cada cambio de la matriz
+  actualizarDensidad(matriz, n);   // la densidad se recalcula con cada cambio de la matriz
 }
 
 /** Densidad del grafo: aristas actuales / n² (se permiten bucles). Actualiza el panel "Análisis de nodo". */
@@ -814,17 +875,6 @@ function limpiarGrafo() {
   mostrarToast("Se quitaron todas las aristas.");
 }
 
-/** Nueva matriz aleatoria con la misma cantidad de nodos; conserva posiciones y nombres. */
-function regenerarGrafo() {
-  const etiquetasPrevias = etiquetas;
-  crearGrafoAleatorio(n);
-  etiquetas = etiquetasPrevias;
-  modoConstruccion = "aleatorio";
-  actualizarTextoModo();
-  renderizarMatriz();
-  dibujarGrafo();
-}
-
 function inicializarHerramientas() {
   document.querySelectorAll(".btn--herramienta[data-modo]").forEach((boton) => {
     boton.addEventListener("click", () => cambiarModoHerramienta(boton.dataset.modo));
@@ -833,10 +883,7 @@ function inicializarHerramientas() {
     "¿Estás seguro de que deseas borrar todas las aristas? Esta acción no se puede deshacer.",
     limpiarGrafo
   ));
-  $("btn-regenerar").addEventListener("click", () => pedirConfirmacion(
-    "¿Estás seguro? Se creará un grafo al azar y perderás el actual si no lo has guardado.",
-    regenerarGrafo
-  ));
+  $("btn-regenerar").addEventListener("click", () => abrirDialogoAleatorio("edicion"));
 }
 
 /* ============ 5. SELECTOR DE NODOS Y BOTONES BASE ============ */
@@ -864,11 +911,7 @@ function inicializarApp() {
   $("btn-mas").addEventListener("click", () => fijarNodosElegidos(leerNodosElegidos() + 1));
 
   // Modo de construcción
-  $("btn-aleatorio").addEventListener("click", () => {
-    crearGrafoAleatorio(leerNodosElegidos());
-    modoConstruccion = "aleatorio";
-    mostrarPantallaEdicion();
-  });
+  $("btn-aleatorio").addEventListener("click", () => abrirDialogoAleatorio("inicio"));
   $("btn-manual").addEventListener("click", () => {
     crearGrafoVacio(leerNodosElegidos());
     modoConstruccion = "manual";
@@ -2719,3 +2762,80 @@ function iniciarFondoNodos() {
 }
 
 iniciarFondoNodos();
+
+
+/* ==========================================================================
+   ALEATORIO POR COMPONENTES · dialog que pide cuántas componentes conexas generar
+   Se abre desde la Pantalla 1 ("inicio") y desde la Pantalla 2 ("edicion").
+   ========================================================================== */
+let contextoAleatorio = "inicio";     // "inicio" | "edicion"
+let nodosAleatorio = 6;
+
+function mostrarErrorAleatorio(mensaje) {
+  const caja = $("error-aleatorio");
+  caja.textContent = mensaje || "";
+  caja.classList.toggle("oculto", !mensaje);
+}
+
+function abrirDialogoAleatorio(origen) {
+  contextoAleatorio = origen;
+  nodosAleatorio = origen === "edicion" ? n : leerNodosElegidos();
+
+  const input = $("input-componentes");
+  input.min = "1";
+  input.max = String(nodosAleatorio);
+  input.value = "1";
+  input.disabled = false;
+  $("chk-azar").checked = false;
+  $("nodos-aleatorio").textContent = nodosAleatorio;
+  $("max-componentes").textContent = nodosAleatorio;
+  $("aviso-reemplazo").classList.toggle("oculto", origen !== "edicion");   // advertencia solo en la Pantalla 2
+  mostrarErrorAleatorio("");
+
+  $("dialogo-aleatorio").showModal();
+  input.focus();
+}
+
+function generarDesdeDialogo() {
+  const N = nodosAleatorio;
+  const esAzar = $("chk-azar").checked;
+  let componentes = 0;
+
+  if (!esAzar) {
+    const texto = $("input-componentes").value.trim();
+    componentes = Number(texto);
+    if (!texto || !Number.isInteger(componentes) || componentes < 1 || componentes > N) {
+      mostrarErrorAleatorio(`Escribe un número entero entre 1 y ${N}.`);
+      return;
+    }
+  }
+
+  if (contextoAleatorio === "inicio") {
+    crearGrafoVacio(N);                                   // nodos, nombres y posiciones nuevos
+    matriz = generarMatrizPorComponentes(N, componentes, esAzar);
+    modoConstruccion = "aleatorio";
+    $("dialogo-aleatorio").close();
+    mostrarPantallaEdicion();                             // dibuja matriz, densidad y grafo
+  } else {
+    matriz = generarMatrizPorComponentes(N, componentes, esAzar);   // conserva nombres y posiciones
+    modoConstruccion = "aleatorio";
+    $("dialogo-aleatorio").close();
+    actualizarTextoModo();
+    renderizarMatriz();                                   // incluye actualizarDensidad(matriz, n)
+    dibujarGrafo();
+  }
+}
+
+function inicializarDialogoAleatorio() {
+  const dialogo = $("dialogo-aleatorio");
+  $("form-aleatorio").addEventListener("submit", (e) => { e.preventDefault(); generarDesdeDialogo(); });   // Enter también genera
+  $("btn-aleatorio-cancelar").addEventListener("click", () => dialogo.close());
+  dialogo.addEventListener("click", (e) => { if (e.target === dialogo) dialogo.close(); });                // clic en el fondo
+  $("chk-azar").addEventListener("change", () => {
+    $("input-componentes").disabled = $("chk-azar").checked;    // "Cantidad al azar" deshabilita el número
+    mostrarErrorAleatorio("");
+  });
+  $("input-componentes").addEventListener("input", () => mostrarErrorAleatorio(""));
+}
+
+inicializarDialogoAleatorio();

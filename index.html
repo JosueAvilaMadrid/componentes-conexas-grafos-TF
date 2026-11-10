@@ -138,6 +138,13 @@
               <select id="select-analisis" class="campo__control" style="min-width:7rem"></select>
             </label>
             <button type="button" class="btn btn--secundario" id="btn-analizar">Analizar</button>
+          
+            <!-- NUEVO: densidad del grafo (se actualiza sola) -->
+            <div class="densidad">
+              <span class="densidad__titulo">Densidad del Grafo:</span>
+              <span id="texto-densidad" class="densidad__valor">0.0%</span>
+              <div id="detalle-densidad" class="densidad__detalle">0 de 0 aristas posibles</div>
+            </div>
           </div>
           <p id="texto-analisis" class="nota" role="status" style="white-space:pre-line"></p>
         </div>

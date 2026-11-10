@@ -444,6 +444,17 @@ function crearMatrizDOM(M, etqFilas, etqColumnas, opciones = {}) {
 function renderizarMatriz() {
   $("contenedor-matriz").replaceChildren(crearMatrizDOM(matriz, etiquetas, etiquetas, { editable: modoEdicionActivo }));
   actualizarSelectAnalisis();      // el selector de análisis siempre refleja los nodos y nombres actuales
+  actualizarDensidad(matriz, n);   // NUEVO: la densidad se recalcula con cada cambio de la matriz
+}
+
+/** Densidad del grafo: aristas actuales / n² (se permiten bucles). Actualiza el panel "Análisis de nodo". */
+function actualizarDensidad(matriz, cantidadNodos) {
+  const maxAristas = cantidadNodos * cantidadNodos;
+  const actuales = matriz.reduce((total, fila) => total + fila.reduce((suma, v) => suma + v, 0), 0);
+  const porcentaje = maxAristas > 0 ? (actuales / maxAristas) * 100 : 0;
+
+  $("texto-densidad").textContent = `${porcentaje.toFixed(1)}%`;
+  $("detalle-densidad").textContent = `${actuales} de ${maxAristas} aristas posibles`;
 }
 
 /** Alterna 0/1 de una celda (la diagonal incluida: un 1 en (i, i) es un bucle) y actualiza tabla y lienzo. */
